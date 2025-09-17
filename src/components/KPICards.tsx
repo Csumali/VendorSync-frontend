@@ -1,0 +1,39 @@
+'use client';
+
+import { KPIs } from '@/types';
+import styles from './KPICards.module.css';
+
+interface KPICardsProps {
+  kpis: KPIs;
+}
+
+export default function KPICards({ kpis }: KPICardsProps) {
+  return (
+    <section className={styles.kpis}>
+      <div className={styles.card}>
+        <h3>Total Vendors</h3>
+        <div className={styles.metric}>{kpis.totalVendors}</div>
+        <div className={styles.delta}>Connected across all categories</div>
+      </div>
+      <div className={styles.card}>
+        <h3>Active Contracts</h3>
+        <div className={styles.metric}>{kpis.activeContracts}</div>
+        <div className={styles.delta}>
+          <span className={styles.up}>▲ +4</span> this month
+        </div>
+      </div>
+      <div className={styles.card}>
+        <h3>Upcoming Payments (30d)</h3>
+        <div className={styles.metric}>{kpis.upcomingPayments}</div>
+        <div className={styles.delta}>
+          <span className={styles.warn}>⏰ 3 due soon</span>
+        </div>
+      </div>
+      <div className={styles.card}>
+        <h3>Projected Savings (12 mo)</h3>
+        <div className={styles.metric}>${kpis.projectedSavings.toLocaleString()}</div>
+        <div className={`${styles.delta} ${styles.up}`}>via early-pay & price monitoring</div>
+      </div>
+    </section>
+  );
+}

@@ -1,26 +1,94 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #0b0f14;
+  --muted: #0f1620;
+  --card: #121822;
+  --card-2: #0f151e;
+  --text: #e6edf3;
+  --subtext: #9fb0c0;
+  --accent: #7cc4ff;
+  --accent-2: #8affc1;
+  --warn: #ffd36e;
+  --danger: #ff7b7b;
+  --success: #7dffa0;
+  --border: #223142;
+  --chip: #1a2330;
+  --shadow: 0 6px 20px rgba(0,0,0,.35);
+  --radius: 16px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+* { 
+  box-sizing: border-box; 
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html, body { 
+  height: 100%; 
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  background: linear-gradient(180deg, var(--bg), #0a1017 30%, #0b121a);
+  color: var(--text);
+}
+
+a { 
+  color: var(--accent); 
+  text-decoration: none; 
+}
+
+/* Layout */
+.app {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  grid-template-rows: 64px 1fr;
+  grid-template-areas:
+    "sidebar header"
+    "sidebar main";
+  min-height: 100vh;
+}
+
+aside.sidebar {
+  grid-area: sidebar;
+  background: linear-gradient(180deg, #0d141d, #0a1017 60%);
+  border-right: 1px solid var(--border);
+  padding: 20px 14px;
+  position: sticky; 
+  top: 0; 
+  height: 100vh;
+}
+
+header.topbar {
+  grid-area: header;
+  display: flex; 
+  align-items: center; 
+  gap: 14px;
+  padding: 10px 18px; 
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(6px);
+  background: rgba(10,16,23,.55);
+  position: sticky; 
+  top: 0; 
+  z-index: 5;
+}
+
+main {
+  grid-area: main; 
+  padding: 18px; 
+  max-width: 1600px; 
+  width: 100%; 
+  margin: 0 auto;
+}
+
+/* Responsive */
+@media (max-width: 1100px) {
+  .app { 
+    grid-template-columns: 1fr; 
+    grid-template-rows: 56px auto; 
+    grid-template-areas: "header" "main"; 
+  }
+  aside.sidebar { 
+    display: none; 
+  }
 }

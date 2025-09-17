@@ -1,0 +1,82 @@
+.calendar {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 8px;
+}
+
+.calHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.calHead h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  color: var(--subtext);
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.btn {
+  background: var(--chip);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.btn:hover {
+  filter: brightness(1.08);
+}
+
+.calGrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+.calCell {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px;
+  min-height: 72px;
+  background: #0e1721;
+  position: relative;
+}
+
+.day {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 12px;
+  color: var(--subtext);
+}
+
+.badge {
+  display: inline-block;
+  padding: 3px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  margin-top: 20px;
+}
+
+.badge.soon {
+  background: rgba(255, 211, 110, 0.15);
+  color: var(--warn);
+  border: 1px solid rgba(255, 211, 110, 0.3);
+}
+
+.badge.due {
+  background: rgba(255, 123, 123, 0.12);
+  color: var(--danger);
+  border: 1px solid rgba(255, 123, 123, 0.35);
+}
+
+.badge.save {
+  background: rgba(122, 255, 190, 0.12);
+  color: var(--success);
+  border: 1px solid rgba(122, 255, 190, 0.35);
+}
