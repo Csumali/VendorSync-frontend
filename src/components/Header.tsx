@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useUser } from '@clerk/nextjs';
 import { OptimizationMode } from '@/types';
 import styles from './Header.module.css';
 
@@ -11,12 +12,25 @@ interface HeaderProps {
 }
 
 export default function Header({ optimizationMode, onModeChange, onExport }: HeaderProps) {
+  const { user, isLoaded } = useUser();
   const modes: OptimizationMode[] = ['Balanced', 'Max Savings', 'Cash Heavy'];
   const currentIndex = modes.indexOf(optimizationMode);
 
   const handleModeClick = () => {
     const nextIndex = (currentIndex + 1) % modes.length;
     onModeChange(modes[nextIndex]);
+  };
+
+  const getUserDisplayName = () => {
+    if (!isLoaded) return '👤 Loading...';
+    if (!user) return '👤 Guest';
+    
+    const firstName = user.firstName || '';
+    const lastName = user.lastName || '';
+    const fullName = `${firstName} ${lastName}`.trim();
+    const displayName = fullName || user.username || user.emailAddresses[0]?.emailAddress || 'User';
+    
+    return `👤 ${displayName}`;
   };
 
   return (
@@ -32,7 +46,7 @@ export default function Header({ optimizationMode, onModeChange, onExport }: Hea
       <button className={`${styles.btn} ${styles.primary}`} onClick={onExport}>
         ⬇️ Export
       </button>
-      <div className={styles.btn} title="User">👤 Alex (Owner)</div>
+      <div className={styles.btn} title="User">{getUserDisplayName()}</div>
     </header>
   );
 }
