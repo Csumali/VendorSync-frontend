@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useUser } from '@clerk/nextjs';
 import { OptimizationMode } from '@/types';
+import ScanContractModal from './ScanContractModal';
 import styles from './Header.module.css';
 
 interface HeaderProps {
@@ -12,12 +13,24 @@ interface HeaderProps {
 
 export default function Header({ optimizationMode, onModeChange }: HeaderProps) {
   const { user, isLoaded } = useUser();
+  const [isScanModalOpen, setIsScanModalOpen] = useState(false);
   const modes: OptimizationMode[] = ['Balanced', 'Max Savings', 'Cash Heavy'];
   const currentIndex = modes.indexOf(optimizationMode);
 
   const handleModeClick = () => {
     const nextIndex = (currentIndex + 1) % modes.length;
     onModeChange(modes[nextIndex]);
+  };
+
+  const handleScanContract = () => {
+    setIsScanModalOpen(true);
+  };
+
+  const handleScanConfirm = (file: File) => {
+    // Here you would typically send the file to your backend for processing
+    console.log('Contract file selected:', file.name);
+    // For now, we'll just show an alert
+    alert(`Contract "${file.name}" has been uploaded and will be processed. This is a demo - in a real app, this would trigger OCR processing.`);
   };
 
   const getUserDisplayName = () => {
@@ -41,8 +54,19 @@ export default function Header({ optimizationMode, onModeChange }: HeaderProps) 
       <button className={styles.btn} onClick={handleModeClick}>
         ⚙️ Optimization: <strong style={{ marginLeft: '6px' }}>{optimizationMode}</strong>
       </button>
-      <button className={`${styles.btn} ${styles.primary}`}>📷 Scan Contract</button>
+      <button 
+        className={`${styles.btn} ${styles.primary}`}
+        onClick={handleScanContract}
+      >
+        📷 Scan Contract
+      </button>
       <div className={styles.btn} title="User">{getUserDisplayName()}</div>
+      
+      <ScanContractModal
+        isOpen={isScanModalOpen}
+        onClose={() => setIsScanModalOpen(false)}
+        onConfirm={handleScanConfirm}
+      />
     </header>
   );
 }
