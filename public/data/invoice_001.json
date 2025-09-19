@@ -1,0 +1,94 @@
+{
+    "vendor_information": {
+        "company_name": {
+            "text": "SHAW DENTALLABORATORYINC."
+        },
+        "address": {
+            "text": "105-123 Bentworth Avenue, Unit 1 NORTH YORK, Ontario, Canada M6A 1P6"
+        },
+        "contact": {
+            "phone": {
+                "text": ""
+            },
+            "email": {
+                "text": "accounts@shawlabgroup.com"
+            }
+        }
+    },
+    "invoice_details": {
+        "invoice_number": {
+            "text": "93632"
+        },
+        "invoice_date": {
+            "text": "2023-03-22"
+        },
+        "due_date": {
+            "text": "2023-04-23"
+        },
+        "financial_data": {
+            "total_amount": {
+                "text": "$108.72",
+                "numeric_value": 108.72
+            },
+            "line_items": [
+                {
+                    "description": {
+                        "text": "RTV-737 Neutral Cure CLEAR 12 cartridges/case"
+                    },
+                    "quantity": 2,
+                    "amount": {
+                        "text": "$38.00",
+                        "numeric_value": 38
+                    }
+                },
+                {
+                    "description": {
+                        "text": "Permabond 200 Cyanoacrylate 1-oz 10 bottles/case"
+                    },
+                    "quantity": 5,
+                    "amount": {
+                        "text": "$35.00",
+                        "numeric_value": 35
+                    }
+                },
+                {
+                    "description": {
+                        "text": "3M 203 GP Masking Tape 24mm x 55m 36 rolls/case"
+                    },
+                    "quantity": 1,
+                    "amount": {
+                        "text": "$15.00",
+                        "numeric_value": 15
+                    }
+                }
+            ],
+            "subtotal": {
+                "text": "$88.00",
+                "numeric_value": 88
+            },
+            "tax": {
+                "text": "$10.72",
+                "numeric_value": 10.72
+            },
+            "shipping_handling": {
+                "text": "$10.00",
+                "numeric_value": 10
+            },
+            "payment_terms": {
+                "terms_text": "NET30",
+                "standardized": "Net 30",
+                "early_pay_discount": {
+                    "found": false,
+                    "text": "",
+                    "percentage": null,
+                    "days": null
+                },
+                "late_fee": {
+                    "found": true,
+                    "percentage": 1.5,
+                    "period": "per month"
+                }
+            }
+        }
+    }
+}

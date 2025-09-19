@@ -1,3 +1,47 @@
+// JSON Invoice Data Structure
+export interface InvoiceData {
+  vendor_information: {
+    company_name: { text: string };
+    address: { text: string };
+    contact: {
+      phone: { text: string };
+      email: { text: string };
+    };
+  };
+  invoice_details: {
+    invoice_number: { text: string };
+    invoice_date: { text: string };
+    due_date: { text: string };
+    financial_data: {
+      total_amount: { text: string; numeric_value: number };
+      line_items: Array<{
+        description: { text: string };
+        quantity: number;
+        amount: { text: string; numeric_value: number };
+      }>;
+      subtotal: { text: string; numeric_value: number };
+      tax: { text: string; numeric_value: number };
+      shipping_handling: { text: string; numeric_value: number };
+      payment_terms: {
+        terms_text: string;
+        standardized: string;
+        early_pay_discount: {
+          found: boolean;
+          text: string;
+          percentage: number | null;
+          days: number | null;
+        };
+        late_fee: {
+          found: boolean;
+          percentage: number | null;
+          period: string;
+        };
+      };
+    };
+  };
+}
+
+// Dashboard Data Structures (derived from JSON)
 export interface Vendor {
   name: string;
   spend: number;
@@ -6,6 +50,10 @@ export interface Vendor {
   compliance: string;
   nextPay: string;
   score: number;
+  email?: string;
+  address?: string;
+  invoiceCount?: number;
+  lastInvoiceDate?: string;
 }
 
 export interface Alert {
@@ -25,6 +73,8 @@ export interface KPIs {
   activeContracts: number;
   upcomingPayments: number;
   projectedSavings: number;
+  totalSpend: number;
+  averageInvoiceAmount: number;
 }
 
 export interface CalendarEvent {

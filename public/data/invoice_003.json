@@ -1,0 +1,94 @@
+{
+    "vendor_information": {
+        "company_name": {
+            "text": "NORTHWEST DAIRY LTD."
+        },
+        "address": {
+            "text": "456 Dairy Lane, Seattle, WA 98101"
+        },
+        "contact": {
+            "phone": {
+                "text": "(206) 555-7890"
+            },
+            "email": {
+                "text": "invoices@northwestdairy.com"
+            }
+        }
+    },
+    "invoice_details": {
+        "invoice_number": {
+            "text": "NWD-2024-045"
+        },
+        "invoice_date": {
+            "text": "2024-01-20"
+        },
+        "due_date": {
+            "text": "2024-02-19"
+        },
+        "financial_data": {
+            "total_amount": {
+                "text": "$1,875.50",
+                "numeric_value": 1875.50
+            },
+            "line_items": [
+                {
+                    "description": {
+                        "text": "Whole Milk - 1 Gallon"
+                    },
+                    "quantity": 50,
+                    "amount": {
+                        "text": "$750.00",
+                        "numeric_value": 750
+                    }
+                },
+                {
+                    "description": {
+                        "text": "Organic Yogurt - 32 oz"
+                    },
+                    "quantity": 25,
+                    "amount": {
+                        "text": "$625.00",
+                        "numeric_value": 625
+                    }
+                },
+                {
+                    "description": {
+                        "text": "Cheese Variety Pack"
+                    },
+                    "quantity": 10,
+                    "amount": {
+                        "text": "$300.00",
+                        "numeric_value": 300
+                    }
+                }
+            ],
+            "subtotal": {
+                "text": "$1,675.00",
+                "numeric_value": 1675
+            },
+            "tax": {
+                "text": "$150.50",
+                "numeric_value": 150.50
+            },
+            "shipping_handling": {
+                "text": "$50.00",
+                "numeric_value": 50
+            },
+            "payment_terms": {
+                "terms_text": "NET15",
+                "standardized": "Net 15",
+                "early_pay_discount": {
+                    "found": false,
+                    "text": "",
+                    "percentage": null,
+                    "days": null
+                },
+                "late_fee": {
+                    "found": true,
+                    "percentage": 2.0,
+                    "period": "per month"
+                }
+            }
+        }
+    }
+}

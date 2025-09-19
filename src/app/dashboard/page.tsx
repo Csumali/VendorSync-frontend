@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useUser } from '@clerk/nextjs';
 import { SignIn } from '@clerk/nextjs';
 import Sidebar from '@/components/Sidebar';
@@ -11,17 +11,67 @@ import Charts from '@/components/Charts';
 import Alerts from '@/components/Alerts';
 import VendorTable from '@/components/VendorTable';
 import RenewalsTable from '@/components/RenewalsTable';
-import { OptimizationMode } from '@/types';
-import { vendors, alerts, renewals, kpis, calendarEvents, savingsSeries } from '@/data/mockData';
+import { OptimizationMode, Vendor, Alert, Renewal, KPIs, CalendarEvent } from '@/types';
+import { getVendors, getAlerts, getRenewals, getKPIs, getCalendarEvents, getSavingsSeries, initializeDataService } from '@/data/dataService';
 import styles from './dashboard.module.css';
 
 export default function DashboardPage() {
   const { isLoaded, isSignedIn } = useUser();
   const [optimizationMode, setOptimizationMode] = useState<OptimizationMode>('Balanced');
+  
+  // State for dashboard data
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [renewals, setRenewals] = useState<Renewal[]>([]);
+  const [kpis, setKpis] = useState<KPIs>({ totalVendors: 0, activeContracts: 0, upcomingPayments: 0, projectedSavings: 0, totalSpend: 0, averageInvoiceAmount: 0 });
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [savingsSeries, setSavingsSeries] = useState<number[]>([]);
+  const [dataLoading, setDataLoading] = useState(true);
+  const [dataError, setDataError] = useState<string | null>(null);
+
+  // Load data when component mounts
+  useEffect(() => {
+    const loadDashboardData = async () => {
+      try {
+        setDataLoading(true);
+        setDataError(null);
+        
+        // Initialize data service
+        await initializeDataService();
+        
+        // Load all dashboard data
+        const [vendorsData, alertsData, renewalsData, kpisData, calendarData, savingsData] = await Promise.all([
+          getVendors(),
+          getAlerts(),
+          getRenewals(),
+          getKPIs(),
+          getCalendarEvents(),
+          getSavingsSeries()
+        ]);
+        
+        setVendors(vendorsData);
+        setAlerts(alertsData);
+        setRenewals(renewalsData);
+        setKpis(kpisData);
+        setCalendarEvents(calendarData);
+        setSavingsSeries(savingsData);
+        
+      } catch (error) {
+        console.error('Error loading dashboard data:', error);
+        setDataError('Failed to load dashboard data. Please try refreshing the page.');
+      } finally {
+        setDataLoading(false);
+      }
+    };
+
+    if (isLoaded && isSignedIn) {
+      loadDashboardData();
+    }
+  }, [isLoaded, isSignedIn]);
 
 
-  // Show loading state while Clerk is initializing
-  if (!isLoaded) {
+  // Show loading state while Clerk is initializing or data is loading
+  if (!isLoaded || dataLoading) {
     return (
       <div className={styles.app}>
         <div style={{ 
@@ -32,7 +82,7 @@ export default function DashboardPage() {
           fontSize: '18px',
           color: 'var(--text)'
         }}>
-          Loading VendorSync...
+          {!isLoaded ? 'Loading VendorSync...' : 'Loading dashboard data...'}
         </div>
       </div>
     );
@@ -48,6 +98,42 @@ export default function DashboardPage() {
         </div>
         <SignIn appearance={{ layout: { socialButtonsPlacement: "bottom" } }} />
       </main>
+    );
+  }
+
+  // Show error state if data loading failed
+  if (dataError) {
+    return (
+      <div className={styles.app}>
+        <div style={{ 
+          display: 'flex', 
+          flexDirection: 'column',
+          justifyContent: 'center', 
+          alignItems: 'center', 
+          height: '100vh',
+          fontSize: '18px',
+          color: 'var(--text)',
+          textAlign: 'center',
+          padding: '2rem'
+        }}>
+          <h2 style={{ color: 'var(--danger)', marginBottom: '1rem' }}>Error Loading Dashboard</h2>
+          <p style={{ color: 'var(--subtext)', marginBottom: '2rem' }}>{dataError}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            style={{
+              padding: '0.75rem 1.5rem',
+              backgroundColor: 'var(--accent)',
+              color: 'var(--bg)',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '16px'
+            }}
+          >
+            Refresh Page
+          </button>
+        </div>
+      </div>
     );
   }
 
@@ -78,8 +164,8 @@ export default function DashboardPage() {
         </section>
 
         <div className={styles.footer}>
-          <div>© VendorSync Demo • All data is mock.</div>
-          <div>Inspired by features: OCR contracts, payment optimization, price monitoring, compliance tracking.</div>
+          <div>© VendorSync Demo • Data loaded from JSON files.</div>
+          <div>Features: OCR contracts, payment optimization, price monitoring, compliance tracking.</div>
         </div>
       </main>
     </div>

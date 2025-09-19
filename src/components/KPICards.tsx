@@ -34,6 +34,16 @@ export default function KPICards({ kpis }: KPICardsProps) {
         <div className={styles.metric}>${kpis.projectedSavings.toLocaleString()}</div>
         <div className={`${styles.delta} ${styles.up}`}>via early-pay & price monitoring</div>
       </div>
+      <div className={styles.card}>
+        <h3>Total Spend</h3>
+        <div className={styles.metric}>${kpis.totalSpend.toLocaleString()}</div>
+        <div className={styles.delta}>Across all vendors</div>
+      </div>
+      <div className={styles.card}>
+        <h3>Avg Invoice</h3>
+        <div className={styles.metric}>${kpis.averageInvoiceAmount.toLocaleString()}</div>
+        <div className={styles.delta}>Per transaction</div>
+      </div>
     </section>
   );
 }

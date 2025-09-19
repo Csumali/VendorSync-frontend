@@ -1,0 +1,94 @@
+{
+    "vendor_information": {
+        "company_name": {
+            "text": "METRO PACKAGING"
+        },
+        "address": {
+            "text": "789 Industrial Blvd, Los Angeles, CA 90021"
+        },
+        "contact": {
+            "phone": {
+                "text": "(213) 555-2468"
+            },
+            "email": {
+                "text": "orders@metropackaging.com"
+            }
+        }
+    },
+    "invoice_details": {
+        "invoice_number": {
+            "text": "MP-2024-089"
+        },
+        "invoice_date": {
+            "text": "2024-01-25"
+        },
+        "due_date": {
+            "text": "2024-02-24"
+        },
+        "financial_data": {
+            "total_amount": {
+                "text": "$3,200.00",
+                "numeric_value": 3200.00
+            },
+            "line_items": [
+                {
+                    "description": {
+                        "text": "Custom Boxes - 12x8x6 inches"
+                    },
+                    "quantity": 500,
+                    "amount": {
+                        "text": "$1,500.00",
+                        "numeric_value": 1500
+                    }
+                },
+                {
+                    "description": {
+                        "text": "Bubble Wrap - 12 inch x 100 ft"
+                    },
+                    "quantity": 20,
+                    "amount": {
+                        "text": "$800.00",
+                        "numeric_value": 800
+                    }
+                },
+                {
+                    "description": {
+                        "text": "Shipping Labels - Custom Design"
+                    },
+                    "quantity": 1000,
+                    "amount": {
+                        "text": "$500.00",
+                        "numeric_value": 500
+                    }
+                }
+            ],
+            "subtotal": {
+                "text": "$2,800.00",
+                "numeric_value": 2800
+            },
+            "tax": {
+                "text": "$280.00",
+                "numeric_value": 280
+            },
+            "shipping_handling": {
+                "text": "$120.00",
+                "numeric_value": 120
+            },
+            "payment_terms": {
+                "terms_text": "NET30",
+                "standardized": "Net 30",
+                "early_pay_discount": {
+                    "found": false,
+                    "text": "",
+                    "percentage": null,
+                    "days": null
+                },
+                "late_fee": {
+                    "found": true,
+                    "percentage": 1.5,
+                    "period": "per month"
+                }
+            }
+        }
+    }
+}

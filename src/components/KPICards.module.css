@@ -1,6 +1,6 @@
 .kpis {
   display: grid;
-  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  grid-template-columns: repeat(3, minmax(200px, 1fr));
   gap: 14px;
 }
 
@@ -46,5 +46,11 @@
 @media (max-width: 1100px) {
   .kpis {
     grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .kpis {
+    grid-template-columns: 1fr;
   }
 }
