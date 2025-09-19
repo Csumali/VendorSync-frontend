@@ -206,31 +206,58 @@ export class DataProcessor {
     };
   }
 
-  public getCalendarEvents(): CalendarEvent[] {
+  public getCalendarEvents(year?: number, month?: number): CalendarEvent[] {
     const events: CalendarEvent[] = [];
     const today = new Date();
     
-    this.vendors.forEach(vendor => {
-      if (vendor.nextPay !== 'Overdue') {
-        const dueDate = new Date(vendor.lastInvoiceDate || today);
-        const day = dueDate.getDate();
-        
-        let type: 'soon' | 'due' | 'save' = 'due';
-        if (vendor.compliance === 'Discount Available') {
-          type = 'save';
-        } else if (vendor.nextPay === 'Due Soon') {
-          type = 'soon';
-        }
-        
-        events.push({
-          day,
-          label: vendor.name.substring(0, 8),
-          type
-        });
+    // Process each invoice to create calendar events based on due dates
+    this.invoices.forEach(invoice => {
+      const dueDate = new Date(invoice.invoice_details.due_date.text);
+      const invoiceYear = dueDate.getFullYear();
+      const invoiceMonth = dueDate.getMonth();
+      const day = dueDate.getDate();
+      const vendorName = invoice.vendor_information.company_name.text;
+      const paymentTerms = invoice.invoice_details.financial_data.payment_terms;
+      
+      // Filter by year and month if provided
+      if (year !== undefined && invoiceYear !== year) {
+        return; // Skip this invoice if year doesn't match
       }
+      if (month !== undefined && invoiceMonth !== month) {
+        return; // Skip this invoice if month doesn't match
+      }
+      
+      // Determine event type based on payment terms
+      let type: 'soon' | 'due' | 'save' = 'due';
+      if (paymentTerms.early_pay_discount.found) {
+        type = 'save';
+      } else if (paymentTerms.late_fee.found) {
+        type = 'soon'; // Highlight as urgent due to late fee risk
+      }
+      
+      // Create event label (truncate vendor name if too long)
+      const label = vendorName.length > 8 ? vendorName.substring(0, 8) + '...' : vendorName;
+      
+      events.push({
+        day,
+        label,
+        type
+      });
     });
     
-    return events;
+    // Remove duplicates and sort by day
+    const uniqueEvents = events.reduce((acc, event) => {
+      const existing = acc.find(e => e.day === event.day);
+      if (!existing) {
+        acc.push(event);
+      } else {
+        // If multiple events on same day, combine labels
+        existing.label = existing.label + ', ' + event.label;
+      }
+      return acc;
+    }, [] as CalendarEvent[]);
+    
+    return uniqueEvents.sort((a, b) => a.day - b.day);
   }
 
   public getSavingsSeries(): number[] {

@@ -11,8 +11,8 @@ import Charts from '@/components/Charts';
 import Alerts from '@/components/Alerts';
 import VendorTable from '@/components/VendorTable';
 import RenewalsTable from '@/components/RenewalsTable';
-import { OptimizationMode, Vendor, Alert, Renewal, KPIs, CalendarEvent } from '@/types';
-import { getVendors, getAlerts, getRenewals, getKPIs, getCalendarEvents, getSavingsSeries, initializeDataService } from '@/data/dataService';
+import { OptimizationMode, Vendor, Alert, Renewal, KPIs } from '@/types';
+import { getVendors, getAlerts, getRenewals, getKPIs, getSavingsSeries, initializeDataService } from '@/data/dataService';
 import styles from './dashboard.module.css';
 
 export default function DashboardPage() {
@@ -24,7 +24,6 @@ export default function DashboardPage() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [renewals, setRenewals] = useState<Renewal[]>([]);
   const [kpis, setKpis] = useState<KPIs>({ totalVendors: 0, activeContracts: 0, upcomingPayments: 0, projectedSavings: 0, totalSpend: 0, averageInvoiceAmount: 0 });
-  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [savingsSeries, setSavingsSeries] = useState<number[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [dataError, setDataError] = useState<string | null>(null);
@@ -40,12 +39,11 @@ export default function DashboardPage() {
         await initializeDataService();
         
         // Load all dashboard data
-        const [vendorsData, alertsData, renewalsData, kpisData, calendarData, savingsData] = await Promise.all([
+        const [vendorsData, alertsData, renewalsData, kpisData, savingsData] = await Promise.all([
           getVendors(),
           getAlerts(),
           getRenewals(),
           getKPIs(),
-          getCalendarEvents(),
           getSavingsSeries()
         ]);
         
@@ -53,7 +51,6 @@ export default function DashboardPage() {
         setAlerts(alertsData);
         setRenewals(renewalsData);
         setKpis(kpisData);
-        setCalendarEvents(calendarData);
         setSavingsSeries(savingsData);
         
       } catch (error) {
@@ -149,7 +146,7 @@ export default function DashboardPage() {
         <KPICards kpis={kpis} />
         
         <section className={styles.twoColumn} style={{ marginTop: '14px' }}>
-          <PaymentCalendar events={calendarEvents} />
+          <PaymentCalendar />
           <Charts 
             vendors={vendors}
             savingsSeries={savingsSeries}

@@ -45,9 +45,9 @@ export async function getKPIs(): Promise<KPIs> {
 }
 
 // Get calendar events
-export async function getCalendarEvents(): Promise<CalendarEvent[]> {
+export async function getCalendarEvents(year?: number, month?: number): Promise<CalendarEvent[]> {
   await ensureInitialized();
-  return dataProcessor!.getCalendarEvents();
+  return dataProcessor!.getCalendarEvents(year, month);
 }
 
 // Get savings series for charts

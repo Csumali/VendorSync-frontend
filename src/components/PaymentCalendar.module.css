@@ -2,6 +2,7 @@
   display: grid;
   grid-template-rows: auto 1fr;
   gap: 8px;
+  position: relative;
 }
 
 .calHead {
@@ -32,6 +33,16 @@
   filter: brightness(1.08);
 }
 
+.monthTitle {
+  transition: 0.2s;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.monthTitle:hover {
+  background: var(--chip);
+}
+
 .calGrid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
@@ -45,6 +56,13 @@
   min-height: 72px;
   background: #0e1721;
   position: relative;
+  transition: 0.2s;
+}
+
+.calCell.today {
+  border: 2px solid var(--accent);
+  background: rgba(124, 196, 255, 0.1);
+  box-shadow: 0 0 0 1px rgba(124, 196, 255, 0.2);
 }
 
 .day {
@@ -53,6 +71,12 @@
   right: 8px;
   font-size: 12px;
   color: var(--subtext);
+  transition: 0.2s;
+}
+
+.day.todayDay {
+  color: var(--accent);
+  font-weight: 700;
 }
 
 .badge {
@@ -79,4 +103,149 @@
   background: rgba(122, 255, 190, 0.12);
   color: var(--success);
   border: 1px solid rgba(122, 255, 190, 0.35);
+}
+
+/* Date Picker Styles */
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  backdrop-filter: blur(4px);
+}
+
+.datePicker {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  width: 90%;
+  max-width: 400px;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.datePickerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.datePickerHeader h4 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.closeBtn {
+  background: none;
+  border: none;
+  color: var(--subtext);
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: 0.2s;
+}
+
+.closeBtn:hover {
+  background: var(--chip);
+  color: var(--text);
+}
+
+.datePickerContent {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.yearSelector,
+.monthSelector {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.yearSelector label,
+.monthSelector label {
+  font-size: 14px;
+  color: var(--subtext);
+  font-weight: 500;
+}
+
+.select {
+  background: var(--chip);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.select:hover {
+  border-color: var(--accent);
+}
+
+.select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(124, 196, 255, 0.2);
+}
+
+.datePickerActions {
+  display: flex;
+  gap: 12px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+  justify-content: flex-end;
+}
+
+.cancelBtn,
+.selectBtn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: 0.2s;
+  border: 1px solid var(--border);
+}
+
+.cancelBtn {
+  background: var(--chip);
+  color: var(--text);
+}
+
+.cancelBtn:hover {
+  background: var(--muted);
+}
+
+.selectBtn {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+
+.selectBtn:hover {
+  background: var(--accent-2);
+  border-color: var(--accent-2);
 }
