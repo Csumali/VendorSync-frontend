@@ -19,9 +19,6 @@ export default function DashboardPage() {
   const { isLoaded, isSignedIn } = useUser();
   const [optimizationMode, setOptimizationMode] = useState<OptimizationMode>('Balanced');
 
-  const handleExport = () => {
-    window.print();
-  };
 
   // Show loading state while Clerk is initializing
   if (!isLoaded) {
@@ -61,7 +58,6 @@ export default function DashboardPage() {
       <Header 
         optimizationMode={optimizationMode}
         onModeChange={setOptimizationMode}
-        onExport={handleExport}
       />
       <main className={styles.main}>
         <KPICards kpis={kpis} />

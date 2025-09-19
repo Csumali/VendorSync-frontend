@@ -8,10 +8,9 @@ import styles from './Header.module.css';
 interface HeaderProps {
   optimizationMode: OptimizationMode;
   onModeChange: (mode: OptimizationMode) => void;
-  onExport: () => void;
 }
 
-export default function Header({ optimizationMode, onModeChange, onExport }: HeaderProps) {
+export default function Header({ optimizationMode, onModeChange }: HeaderProps) {
   const { user, isLoaded } = useUser();
   const modes: OptimizationMode[] = ['Balanced', 'Max Savings', 'Cash Heavy'];
   const currentIndex = modes.indexOf(optimizationMode);
@@ -42,10 +41,7 @@ export default function Header({ optimizationMode, onModeChange, onExport }: Hea
       <button className={styles.btn} onClick={handleModeClick}>
         ⚙️ Optimization: <strong style={{ marginLeft: '6px' }}>{optimizationMode}</strong>
       </button>
-      <button className={styles.btn}>📷 Scan Contract</button>
-      <button className={`${styles.btn} ${styles.primary}`} onClick={onExport}>
-        ⬇️ Export
-      </button>
+      <button className={`${styles.btn} ${styles.primary}`}>📷 Scan Contract</button>
       <div className={styles.btn} title="User">{getUserDisplayName()}</div>
     </header>
   );
