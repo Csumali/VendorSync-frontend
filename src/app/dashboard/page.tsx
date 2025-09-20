@@ -17,6 +17,7 @@ import styles from './dashboard.module.css';
 
 export default function DashboardPage() {
   const { isLoaded, isSignedIn } = useUser();
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [optimizationMode, setOptimizationMode] = useState<OptimizationMode>('Balanced');
   
   // State for dashboard data
@@ -136,35 +137,40 @@ export default function DashboardPage() {
 
   // Show dashboard for authenticated users
   return (
-    <div className={styles.app}>
-      <Sidebar />
-      <Header 
-        optimizationMode={optimizationMode}
-        onModeChange={setOptimizationMode}
-      />
-      <main className={styles.main}>
-        <KPICards kpis={kpis} />
-        
-        <section className={styles.twoColumn} style={{ marginTop: '14px' }}>
-          <PaymentCalendar />
-          <Charts 
-            vendors={vendors}
-            savingsSeries={savingsSeries}
+    <div className="min-h-dvh overflow-x-hidden">
+        <div className={styles.app}>
+          {/* Sidebar (desktop rail + mobile drawer) */}
+          <Sidebar mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
+
+          <Header 
             optimizationMode={optimizationMode}
+            onModeChange={setOptimizationMode}
+            onOpenSidebar={() => setMobileOpen(true)}
           />
-        </section>
+          <main className={styles.main}>
+            <KPICards kpis={kpis} />
+            
+            <section className={styles.twoColumn} style={{ marginTop: '14px' }}>
+              <PaymentCalendar />
+              <Charts 
+                vendors={vendors}
+                savingsSeries={savingsSeries}
+                optimizationMode={optimizationMode}
+              />
+            </section>
 
-        <section className={styles.threeColumn} style={{ marginTop: '14px' }}>
-          <Alerts alerts={alerts} />
-          <VendorTable vendors={vendors} />
-          <RenewalsTable renewals={renewals} />
-        </section>
+            <section className={styles.threeColumn} style={{ marginTop: '14px' }}>
+              <Alerts alerts={alerts} />
+              <VendorTable vendors={vendors} />
+              <RenewalsTable renewals={renewals} />
+            </section>
 
-        <div className={styles.footer}>
-          <div>© VendorSync Demo • Data loaded from JSON files.</div>
-          <div>Features: OCR contracts, payment optimization, price monitoring, compliance tracking.</div>
+            <div className={styles.footer}>
+              <div>© VendorSync Demo • Data loaded from JSON files.</div>
+              <div>Features: OCR contracts, payment optimization, price monitoring, compliance tracking.</div>
+            </div>
+          </main>
         </div>
-      </main>
-    </div>
+      </div>
   );
 }
