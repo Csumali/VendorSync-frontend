@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useUser } from '@clerk/nextjs';
+import { useAuth, useUser } from '@clerk/nextjs';
 import { OptimizationMode } from '@/types';
 import ScanContractModal from './ScanContractModal';
 import styles from './Header.module.css';
@@ -13,6 +13,7 @@ interface HeaderProps {
 
 export default function Header({ optimizationMode, onModeChange }: HeaderProps) {
   const { user, isLoaded } = useUser();
+  const { isSignedIn, userId, sessionId, getToken } = useAuth()
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
   const modes: OptimizationMode[] = ['Balanced', 'Max Savings', 'Cash Heavy'];
   const currentIndex = modes.indexOf(optimizationMode);
@@ -26,11 +27,35 @@ export default function Header({ optimizationMode, onModeChange }: HeaderProps) 
     setIsScanModalOpen(true);
   };
 
-  const handleScanConfirm = (file: File) => {
+  const handleScanConfirm = async (file: File) => {
     // Here you would typically send the file to your backend for processing
     console.log('Contract file selected:', file.name);
+    const token = await getToken();
     // For now, we'll just show an alert
     alert(`Contract "${file.name}" has been uploaded and will be processed. This is a demo - in a real app, this would trigger OCR processing.`);
+    
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await fetch(`https://868697843cec.ngrok-free.app/vendor/invoice/upload`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to upload contract error: ' + response.statusText);
+      }
+      
+      const data = await response.json();
+      console.log('Contract uploaded successfully:', data);
+      alert('Contract uploaded successfully');
+    } catch (error) {
+      console.error('Error uploading contract:', error);
+      alert('Failed to upload contract. Please try again.');
+    }
   };
 
   const getUserDisplayName = () => {
