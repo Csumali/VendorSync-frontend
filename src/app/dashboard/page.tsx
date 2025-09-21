@@ -39,8 +39,8 @@ export default function DashboardPage() {
         setDataLoading(true);
         setDataError(null);
         
-        // Initialize data service
-        await initializeDataService();
+        // Initialize data service with getToken function
+        await initializeDataService(getToken);
         
         // Load all dashboard data
         const [vendorsData, alertsData, renewalsData, kpisData, savingsData] = await Promise.all([
@@ -68,7 +68,7 @@ export default function DashboardPage() {
     if (isLoaded && isSignedIn) {
       loadDashboardData();
     }
-  }, [isLoaded, isSignedIn]);
+  }, [isLoaded, isSignedIn, getToken]);
 
   // Touch gesture support for mobile sidebar
   useEffect(() => {
@@ -240,7 +240,7 @@ export default function DashboardPage() {
             </section>
 
             <div className={styles.footer}>
-              <div>© VendorSync Demo • Data loaded from JSON files.</div>
+              <div>© VendorSync • Data loaded from API.</div>
               <div>Features: OCR contracts, payment optimization, price monitoring, compliance tracking.</div>
             </div>
           </main>
