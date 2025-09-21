@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useAuth } from '@clerk/nextjs';
 import { Vendor, OptimizationMode } from '@/types';
 import styles from './Charts.module.css';
 
@@ -10,14 +11,151 @@ interface ChartsProps {
   optimizationMode: OptimizationMode;
 }
 
+/* ========================= Types (from payments page) ========================= */
+
+type InvoiceRaw = {
+  id: string;
+  invoiceNumber?: string | null;
+  date?: string | null;
+  dueDate?: string | null;
+  subtotal?: string | number | null;
+  totalAmount?: string | number | null;
+  paidDate?: string | null;
+  paidAmount?: string | number | null;
+  status?: 'paid' | 'pending' | string | null;
+  paymentTerms?: string | null;
+  earlyPayDiscount?: string | number | null;
+  earlyPayDays?: number | null;
+  vendor?: { id: string } | null;
+};
+
+type InvoiceView = {
+  id: string;
+  vendorId: string;
+  vendorName?: string | null;
+  invoiceNumber: string;
+  date: string | null;
+  dueDate: string | null;
+  subtotal: number;
+  totalAmount: number;
+  status: 'paid' | 'pending';
+  paidAt: string | null;
+  paidTs: number | null;
+  daysLeft: number | null;
+  paymentTerms?: string | null;
+  earlyPayDiscount?: number | null;
+  earlyPayDays?: number | null;
+};
+
+/* ========================= Helper functions (from payments page) ========================= */
+
+function getApiBase(): string {
+  const direct = process.env.NEXT_PUBLIC_API_BASE;
+  if (direct) return direct.replace(/\/$/, '');
+  const vendorsUrl = process.env.NEXT_PUBLIC_VENDORS_API_URL;
+  if (vendorsUrl) return vendorsUrl.replace(/\/vendor.*$/i, '').replace(/\/$/, '');
+  throw new Error('API base not configured. Set NEXT_PUBLIC_API_BASE in .env.local');
+}
+
+function toNumber(v: unknown): number {
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  const n = Number(String(v ?? '').replace(/[^\d.-]/g, ''));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function toTs(iso: string | null): number | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? t : null;
+}
+
+function toPaidTs(paidIso: string | null): number | null {
+  return toTs(paidIso);
+}
+
+function normalizeInvoice(x: InvoiceRaw): InvoiceView {
+  const paidIso = x.paidDate ?? null;
+  const dueIso = x.dueDate ?? null;
+  const dueTs = toTs(dueIso);
+  const status: 'paid' | 'pending' = (x.status === 'paid') ? 'paid' : 'pending';
+
+  return {
+    id: x.id,
+    vendorId: x.vendor?.id ?? '',
+    vendorName: null,
+    invoiceNumber: (x.invoiceNumber ?? '').toString(),
+    date: x.date ?? null,
+    dueDate: dueIso,
+    subtotal: toNumber(x.subtotal),
+    totalAmount: toNumber(x.totalAmount),
+    status,
+    paidAt: paidIso,
+    paidTs: toPaidTs(paidIso),
+    daysLeft: null, // We don't need this for the chart
+    paymentTerms: x.paymentTerms ?? null,
+    earlyPayDiscount: x.earlyPayDiscount != null ? toNumber(x.earlyPayDiscount) : null,
+    earlyPayDays: x.earlyPayDays ?? null,
+  };
+}
+
 export default function Charts({ vendors, savingsSeries, optimizationMode }: ChartsProps) {
+  const { isLoaded, isSignedIn, getToken } = useAuth();
   const lineChartRef = useRef<HTMLCanvasElement>(null);
   const barChartRef = useRef<HTMLCanvasElement>(null);
   const [showScrollHint, setShowScrollHint] = useState(false);
+  const [invoices, setInvoices] = useState<InvoiceView[]>([]);
+  const [monthlyTotals, setMonthlyTotals] = useState<{ months: string[], amounts: number[] }>({ months: [], amounts: [] });
+  const [loading, setLoading] = useState(true);
 
-  const drawLineChart = (canvas: HTMLCanvasElement, series: number[]) => {
+  const apiBase = getApiBase();
+
+  async function getAuthHeaders() {
+    const token = await getToken();
+    return {
+      'ngrok-skip-browser-warning': 'true',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    } as HeadersInit;
+  }
+
+  // Fetch invoices directly like payments page
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoading(true);
+        console.log('Charts: Fetching invoices...');
+        
+        const headers = await getAuthHeaders();
+        const res = await fetch(`${apiBase}/vendor/invoice/all`, { headers, cache: 'no-store' });
+        if (!res.ok) {
+          const t = await res.text().catch(() => '');
+          throw new Error(`Fetch invoices failed ${res.status} ${t}`);
+        }
+        const json = await res.json();
+        const list: InvoiceRaw[] = Array.isArray(json) ? json : (json?.invoices ?? []);
+        const views = list.map(normalizeInvoice);
+
+        if (!cancelled) {
+          console.log('Charts: Fetched invoices:', views.length);
+          setInvoices(views);
+        }
+      } catch (e: any) {
+        console.error('Charts: Error fetching invoices:', e?.message ?? 'Failed to load invoices.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isLoaded, isSignedIn, apiBase]);
+
+  const drawCashFlowChart = (canvas: HTMLCanvasElement, months: string[], amounts: number[]) => {
+    console.log('Charts: drawCashFlowChart called with:', { months, amounts });
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx || months.length === 0 || amounts.length === 0) {
+      console.log('Charts: drawCashFlowChart early return - ctx:', !!ctx, 'months:', months.length, 'amounts:', amounts.length);
+      return;
+    }
 
     const w = canvas.width = canvas.clientWidth * devicePixelRatio;
     const h = canvas.height = canvas.clientHeight * devicePixelRatio;
@@ -30,11 +168,11 @@ export default function Charts({ vendors, savingsSeries, optimizationMode }: Cha
     const pad = 18;
     const W = canvas.clientWidth - pad * 2;
     const H = canvas.clientHeight - pad * 2;
-    const min = Math.min(...series);
-    const max = Math.max(...series);
+    const min = Math.min(...amounts);
+    const max = Math.max(...amounts);
     const range = (max - min) || 1;
 
-    // grid
+    // Draw grid lines
     ctx.strokeStyle = '#223142';
     ctx.lineWidth = 1;
     for (let i = 0; i < 5; i++) {
@@ -45,11 +183,29 @@ export default function Charts({ vendors, savingsSeries, optimizationMode }: Cha
       ctx.stroke();
     }
 
-    // line
+    // Draw month labels on X-axis
+    ctx.fillStyle = '#9fb0c0';
+    ctx.font = '11px system-ui';
+    ctx.textAlign = 'center';
+    months.forEach((month, i) => {
+      const x = pad + (W / (months.length - 1)) * i;
+      ctx.fillText(month, x, pad + H + 14);
+    });
+
+    // Draw Y-axis labels
+    ctx.textAlign = 'right';
+    ctx.font = '10px system-ui';
+    for (let i = 0; i < 5; i++) {
+      const value = min + (range / 4) * i;
+      const y = pad + H - (H / 4) * i;
+      ctx.fillText(`$${(value / 1000).toFixed(0)}k`, pad - 8, y + 3);
+    }
+
+    // Draw line
     ctx.beginPath();
-    series.forEach((v, i) => {
-      const x = pad + (W / (series.length - 1)) * i;
-      const y = pad + H - ((v - min) / range) * H;
+    amounts.forEach((amount, i) => {
+      const x = pad + (W / (amounts.length - 1)) * i;
+      const y = pad + H - ((amount - min) / range) * H;
       i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
     });
     const grad = ctx.createLinearGradient(0, 0, 0, H);
@@ -59,11 +215,11 @@ export default function Charts({ vendors, savingsSeries, optimizationMode }: Cha
     ctx.lineWidth = 2.2;
     ctx.stroke();
 
-    // fill under
+    // Fill under the line
     const path = new Path2D();
-    series.forEach((v, i) => {
-      const x = pad + (W / (series.length - 1)) * i;
-      const y = pad + H - ((v - min) / range) * H;
+    amounts.forEach((amount, i) => {
+      const x = pad + (W / (amounts.length - 1)) * i;
+      const y = pad + H - ((amount - min) / range) * H;
       i ? path.lineTo(x, y) : path.moveTo(x, y);
     });
     path.lineTo(pad + W, pad + H);
@@ -92,7 +248,13 @@ export default function Charts({ vendors, savingsSeries, optimizationMode }: Cha
     const W = canvas.clientWidth - pad * 2;
     const H = canvas.clientHeight - pad * 2;
     const maxVal = Math.max(...values.map(v => Math.abs(v))) || 1;
-    const barW = W / (values.length * 1.5);
+    
+    // Calculate responsive bar width and spacing
+    const minBarWidth = 20;
+    const maxBarWidth = 60;
+    const availableWidth = W - (values.length - 1) * 10; // 10px spacing between bars
+    const calculatedBarWidth = Math.max(minBarWidth, Math.min(maxBarWidth, availableWidth / values.length));
+    const barSpacing = (W - calculatedBarWidth * values.length) / (values.length - 1);
 
     // axis
     ctx.strokeStyle = '#223142';
@@ -102,52 +264,198 @@ export default function Charts({ vendors, savingsSeries, optimizationMode }: Cha
     ctx.lineTo(pad + W, pad + H);
     ctx.stroke();
 
+    // Set font for measuring text
+    ctx.font = '11px system-ui';
+    ctx.fillStyle = '#9fb0c0';
+    ctx.textAlign = 'center';
+
     values.forEach((v, i) => {
-      const x = pad + i * (barW * 1.5) + barW * 0.25;
-      const hVal = (Math.abs(v) / maxVal) * (H * 0.9);
-      const y = pad + (v >= 0 ? H - hVal : H);
+      const x = pad + i * (calculatedBarWidth + barSpacing);
+      const hVal = (v / maxVal) * (H * 0.9); // All values are positive (invoice totals)
+      const y = pad + H - hVal;
+      
+      // Draw bar (all bars go up since they're invoice totals)
       const grad = ctx.createLinearGradient(0, 0, 0, H);
-      grad.addColorStop(0, v >= 0 ? '#8affc1' : '#ff7b7b');
-      grad.addColorStop(1, v >= 0 ? '#0f6e4b' : '#7a2b2b');
+      grad.addColorStop(0, '#8affc1'); // Green gradient for positive values
+      grad.addColorStop(1, '#0f6e4b');
       ctx.fillStyle = grad;
-      ctx.fillRect(x, y, barW, hVal);
-      ctx.fillStyle = '#9fb0c0';
-      ctx.font = '12px system-ui';
-      ctx.fillText(labels[i], x, pad + H + 14);
+      ctx.fillRect(x, y, calculatedBarWidth, hVal);
+      
+      // Draw label with responsive text handling
+      const label = labels[i];
+      const maxLabelWidth = calculatedBarWidth + 10; // Allow slight overflow
+      const labelX = x + calculatedBarWidth / 2;
+      
+      // Measure text width
+      const textMetrics = ctx.measureText(label);
+      const textWidth = textMetrics.width;
+      
+      if (textWidth <= maxLabelWidth) {
+        // Text fits, draw normally
+        ctx.fillText(label, labelX, pad + H + 14);
+      } else {
+        // Text is too long, truncate with ellipsis
+        let truncatedLabel = label;
+        let truncatedWidth = textWidth;
+        
+        while (truncatedWidth > maxLabelWidth && truncatedLabel.length > 3) {
+          truncatedLabel = truncatedLabel.slice(0, -4) + '...';
+          truncatedWidth = ctx.measureText(truncatedLabel).width;
+        }
+        
+        ctx.fillText(truncatedLabel, labelX, pad + H + 14);
+      }
     });
   };
 
+  // Calculate monthly totals from fetched invoices
   useEffect(() => {
-    if (lineChartRef.current) {
-      const tweak = optimizationMode === 'Max Savings' ? 1.08 : (optimizationMode === 'Cash Heavy' ? 0.95 : 1.0);
-      drawLineChart(lineChartRef.current, savingsSeries.map(v => Math.round(v * tweak)));
+    if (invoices.length === 0) return;
+    
+    console.log('Charts: Calculating monthly totals from', invoices.length, 'invoices');
+    
+    // Get the last 12 months
+    const now = new Date();
+    const months: string[] = [];
+    const amounts: number[] = [];
+    
+    for (let i = 11; i >= 0; i--) {
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthName = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+      months.push(monthName);
+      
+      // Calculate total amount for this month from ALL invoices (not just paid)
+      const monthTotal = invoices
+        .filter(invoice => {
+          if (!invoice.date) return false;
+          const invoiceDate = new Date(invoice.date);
+          return invoiceDate.getFullYear() === date.getFullYear() && 
+                 invoiceDate.getMonth() === date.getMonth();
+        })
+        .reduce((sum, invoice) => {
+          const amount = invoice.totalAmount;
+          return Number.isFinite(amount) && amount >= 0 ? sum + amount : sum;
+        }, 0);
+      
+      console.log(`Charts: ${monthName} - ${invoices.filter(inv => {
+        if (!inv.date) return false;
+        const invDate = new Date(inv.date);
+        return invDate.getFullYear() === date.getFullYear() && invDate.getMonth() === date.getMonth();
+      }).length} invoices, total: $${monthTotal}`);
+      
+      amounts.push(Math.round(monthTotal));
     }
-  }, [savingsSeries, optimizationMode]);
+    
+    const data = { months, amounts };
+    console.log('Charts: Final monthly totals:', data);
+    setMonthlyTotals(data);
+  }, [invoices]);
 
   useEffect(() => {
-    if (barChartRef.current) {
-      const priceLabels = vendors.map(v => v.name.split(' ')[0]);
-      const priceValues = vendors.map(v => v.priceDelta);
-      drawBarChart(barChartRef.current, priceLabels, priceValues);
+    console.log('Charts: useEffect triggered, monthlyTotals:', monthlyTotals);
+    if (lineChartRef.current && monthlyTotals.months.length > 0) {
+      console.log('Charts: Drawing chart with data:', monthlyTotals);
+      drawCashFlowChart(lineChartRef.current, monthlyTotals.months, monthlyTotals.amounts);
+    } else {
+      console.log('Charts: Not drawing chart - lineChartRef:', !!lineChartRef.current, 'months length:', monthlyTotals.months.length);
     }
-  }, [vendors]);
+  }, [monthlyTotals]);
+
+  useEffect(() => {
+    if (barChartRef.current && invoices.length > 0) {
+      // Calculate total invoice amount for each vendor
+      const vendorTotals = vendors.map(vendor => {
+        // Match vendors by name since Vendor type doesn't have id
+        const vendorInvoices = invoices.filter(invoice => {
+          // Try to match by vendor name (this is a simplified approach)
+          // In a real app, you'd want to match by ID or have a better mapping
+          return invoice.vendorName?.toLowerCase().includes(vendor.name.toLowerCase()) ||
+                 vendor.name.toLowerCase().includes(invoice.vendorName?.toLowerCase() || '');
+        });
+        const totalAmount = vendorInvoices.reduce((sum, invoice) => sum + invoice.totalAmount, 0);
+        return { vendor, totalAmount };
+      });
+
+      // Sort by total amount (highest first) and take top 5
+      const topVendors = vendorTotals
+        .sort((a, b) => b.totalAmount - a.totalAmount)
+        .slice(0, 5);
+
+      // Create shorter, more readable vendor names
+      const labels = topVendors.map(({ vendor }) => {
+        const name = vendor.name;
+        if (name.length > 15) {
+          const words = name.split(/[\s\-_&]+/);
+          const meaningfulWords = words.filter(word => 
+            word.length > 2 && 
+            !['the', 'and', 'of', 'for', 'inc', 'llc', 'corp', 'ltd', 'co'].includes(word.toLowerCase())
+          );
+          
+          if (meaningfulWords.length > 0) {
+            return meaningfulWords[0].substring(0, 12);
+          }
+          
+          return name.substring(0, 12);
+        }
+        
+        return name;
+      });
+
+      const values = topVendors.map(({ totalAmount }) => totalAmount);
+      
+      console.log('Charts: Top vendors by invoice total:', topVendors.map(v => ({ name: v.vendor.name, total: v.totalAmount })));
+      drawBarChart(barChartRef.current, labels, values);
+    }
+  }, [vendors, invoices]);
 
   useEffect(() => {
     const handleResize = () => {
-      if (lineChartRef.current) {
-        const tweak = optimizationMode === 'Max Savings' ? 1.08 : (optimizationMode === 'Cash Heavy' ? 0.95 : 1.0);
-        drawLineChart(lineChartRef.current, savingsSeries.map(v => Math.round(v * tweak)));
+      if (lineChartRef.current && monthlyTotals.months.length > 0) {
+        drawCashFlowChart(lineChartRef.current, monthlyTotals.months, monthlyTotals.amounts);
       }
-      if (barChartRef.current) {
-        const priceLabels = vendors.map(v => v.name.split(' ')[0]);
-        const priceValues = vendors.map(v => v.priceDelta);
-        drawBarChart(barChartRef.current, priceLabels, priceValues);
+      if (barChartRef.current && invoices.length > 0) {
+        // Calculate total invoice amount for each vendor (same logic as above)
+        const vendorTotals = vendors.map(vendor => {
+          // Match vendors by name since Vendor type doesn't have id
+          const vendorInvoices = invoices.filter(invoice => {
+            return invoice.vendorName?.toLowerCase().includes(vendor.name.toLowerCase()) ||
+                   vendor.name.toLowerCase().includes(invoice.vendorName?.toLowerCase() || '');
+          });
+          const totalAmount = vendorInvoices.reduce((sum, invoice) => sum + invoice.totalAmount, 0);
+          return { vendor, totalAmount };
+        });
+
+        const topVendors = vendorTotals
+          .sort((a, b) => b.totalAmount - a.totalAmount)
+          .slice(0, 5);
+
+        const labels = topVendors.map(({ vendor }) => {
+          const name = vendor.name;
+          if (name.length > 15) {
+            const words = name.split(/[\s\-_&]+/);
+            const meaningfulWords = words.filter(word => 
+              word.length > 2 && 
+              !['the', 'and', 'of', 'for', 'inc', 'llc', 'corp', 'ltd', 'co'].includes(word.toLowerCase())
+            );
+            
+            if (meaningfulWords.length > 0) {
+              return meaningfulWords[0].substring(0, 12);
+            }
+            
+            return name.substring(0, 12);
+          }
+          
+          return name;
+        });
+
+        const values = topVendors.map(({ totalAmount }) => totalAmount);
+        drawBarChart(barChartRef.current, labels, values);
       }
     };
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [vendors, savingsSeries, optimizationMode]);
+  }, [vendors, monthlyTotals, invoices]);
 
   // Check if scrolling is needed on mobile
   useEffect(() => {
@@ -169,24 +477,24 @@ export default function Charts({ vendors, savingsSeries, optimizationMode }: Cha
           ← Swipe charts to see full data →
         </div>
       )}
-      <div className={styles.card}>
-        <h3>Cash Flow & Savings Projection</h3>
-        <div className={styles.chartContainer}>
-          <canvas ref={lineChartRef} height={160}></canvas>
+        <div className={styles.card}>
+          <h3>Monthly Invoice Flow</h3>
+          <div className={styles.chartContainer}>
+            <canvas ref={lineChartRef} height={160}></canvas>
+          </div>
+          <div className={styles.footer}>
+            <span>Optimization Mode: <strong>{optimizationMode}</strong></span>
+            <span className={styles.deltaUp}>Based on all invoices</span>
+          </div>
         </div>
-        <div className={styles.footer}>
-          <span>Optimization Mode: <strong>{optimizationMode}</strong></span>
-          <span className={styles.deltaUp}>Potential +$3.2k/yr</span>
-        </div>
-      </div>
       <div className={styles.card}>
-        <h3>Price Change Watchlist (30d)</h3>
+        <h3>Top Vendors by Invoice Total</h3>
         <div className={styles.chartContainer}>
           <canvas ref={barChartRef} height={140}></canvas>
         </div>
         <div className={styles.footer}>
-          <span>🧾 Top 5 vendors by spend</span>
-          <span className={styles.deltaDown}>Review ↑ increases</span>
+          <span>🧾 Top 5 vendors by total invoice amount</span>
+          <span className={styles.deltaUp}>Based on all invoices</span>
         </div>
       </div>
     </div>

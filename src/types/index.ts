@@ -21,8 +21,16 @@ export interface ApiInvoice {
   paymentTerms: string;
   earlyPayDiscount?: number;
   lateFee?: number;
+  status?: 'paid' | 'pending' | string | null;
+  paidDate?: string | null;
+  paidAmount?: number | null;
   createdAt: string;
   updatedAt: string;
+  // Vendor information might be included in the API response
+  vendor?: {
+    id: string;
+    name: string;
+  };
 }
 
 export interface PerformanceData {
@@ -113,7 +121,9 @@ export interface KPIs {
 export interface CalendarEvent {
   day: number;
   label: string;
-  type: 'soon' | 'due' | 'save';
+  type: 'soon' | 'due' | 'save' | 'future';
+  vendorId?: string; // Add vendor ID for lookup
+  fullVendorName?: string; // Add full vendor name for tooltip
 }
 
 export type OptimizationMode = 'Balanced' | 'Max Savings' | 'Cash Heavy';

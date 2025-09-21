@@ -10,9 +10,8 @@ import PaymentCalendar from '@/components/PaymentCalendar';
 import Charts from '@/components/Charts';
 import Alerts from '@/components/Alerts';
 import VendorTable from '@/components/VendorTable';
-import RenewalsTable from '@/components/RenewalsTable';
-import { OptimizationMode, Vendor, Alert, Renewal, KPIs } from '@/types';
-import { getVendors, getAlerts, getRenewals, getKPIs, getSavingsSeries, initializeDataService } from '@/data/dataService';
+import { OptimizationMode, Vendor, Alert, KPIs } from '@/types';
+import { getVendors, getAlerts, getKPIs, getSavingsSeries, initializeDataService, refreshData, getGlobalTotalSpend } from '@/data/dataService';
 import styles from './dashboard.module.css';
 // import { io } from 'socket.io-client';
 
@@ -26,49 +25,83 @@ export default function DashboardPage() {
   // State for dashboard data
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [renewals, setRenewals] = useState<Renewal[]>([]);
   const [kpis, setKpis] = useState<KPIs>({ totalVendors: 0, activeContracts: 0, upcomingPayments: 0, projectedSavings: 0, totalSpend: 0, averageInvoiceAmount: 0 });
   const [savingsSeries, setSavingsSeries] = useState<number[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [dataError, setDataError] = useState<string | null>(null);
+  
+  // State for total spend that can be updated from payments page
+  const [totalSpend, setTotalSpend] = useState<number | null>(null);
+
+  // Function to load dashboard data
+  const loadDashboardData = async () => {
+    try {
+      setDataLoading(true);
+      setDataError(null);
+      
+      // Initialize data service with getToken function
+      await initializeDataService(getToken);
+      
+      // Load all dashboard data
+      const [vendorsData, alertsData, kpisData, savingsData] = await Promise.all([
+        getVendors(),
+        getAlerts(),
+        getKPIs(),
+        getSavingsSeries()
+      ]);
+      
+      setVendors(vendorsData);
+      setAlerts(alertsData);
+      setKpis(kpisData);
+      setSavingsSeries(savingsData);
+      
+      // Initialize total spend with global value
+      const globalTotal = getGlobalTotalSpend();
+      setTotalSpend(globalTotal);
+      
+    } catch (error) {
+      console.error('Error loading dashboard data:', error);
+      setDataError('Failed to load dashboard data. Please try refreshing the page.');
+    } finally {
+      setDataLoading(false);
+    }
+  };
 
   // Load data when component mounts
   useEffect(() => {
-    const loadDashboardData = async () => {
-      try {
-        setDataLoading(true);
-        setDataError(null);
-        
-        // Initialize data service with getToken function
-        await initializeDataService(getToken);
-        
-        // Load all dashboard data
-        const [vendorsData, alertsData, renewalsData, kpisData, savingsData] = await Promise.all([
-          getVendors(),
-          getAlerts(),
-          getRenewals(),
-          getKPIs(),
-          getSavingsSeries()
-        ]);
-        
-        setVendors(vendorsData);
-        setAlerts(alertsData);
-        setRenewals(renewalsData);
-        setKpis(kpisData);
-        setSavingsSeries(savingsData);
-        
-      } catch (error) {
-        console.error('Error loading dashboard data:', error);
-        setDataError('Failed to load dashboard data. Please try refreshing the page.');
-      } finally {
-        setDataLoading(false);
-      }
-    };
-
     if (isLoaded && isSignedIn) {
       loadDashboardData();
     }
   }, [isLoaded, isSignedIn, getToken]);
+
+  // Listen for data changes and refresh dashboard
+  useEffect(() => {
+    const handleDataRefresh = () => {
+      console.log('Dashboard: Data refresh event received, reloading dashboard...');
+      loadDashboardData();
+    };
+
+    const handleTotalSpendUpdate = () => {
+      const newTotalSpend = getGlobalTotalSpend();
+      setTotalSpend(newTotalSpend);
+    };
+
+    // Listen for custom events from payments page
+    window.addEventListener('dashboard-refresh', handleDataRefresh);
+    window.addEventListener('total-spend-update', handleTotalSpendUpdate as EventListener);
+    
+    // Also set up a periodic refresh every 30 seconds as a fallback
+    const refreshInterval = setInterval(() => {
+      console.log('Dashboard: Periodic refresh check...');
+      loadDashboardData();
+    }, 30000);
+
+    return () => {
+      window.removeEventListener('dashboard-refresh', handleDataRefresh);
+      window.removeEventListener('total-spend-update', handleTotalSpendUpdate as EventListener);
+      clearInterval(refreshInterval);
+    };
+  }, [isLoaded, isSignedIn, getToken, kpis.totalSpend]);
 
   // Touch gesture support for mobile sidebar
   useEffect(() => {
@@ -222,7 +255,8 @@ export default function DashboardPage() {
             onOpenSidebar={() => setMobileOpen(true)}
           />
           <main className={styles.main}>
-            <KPICards kpis={kpis} />
+            
+            <KPICards kpis={kpis} totalSpend={totalSpend ?? undefined} />
             
             <section className={styles.twoColumn} style={{ marginTop: '14px' }}>
               <PaymentCalendar />
@@ -233,15 +267,14 @@ export default function DashboardPage() {
               />
             </section>
 
-            <section className={styles.threeColumn} style={{ marginTop: '14px' }}>
+            <section className={styles.twoColumn} style={{ marginTop: '14px' }}>
               <Alerts alerts={alerts} />
               <VendorTable vendors={vendors} />
-              <RenewalsTable renewals={renewals} />
             </section>
 
             <div className={styles.footer}>
               <div>© VendorSync • Data loaded from API.</div>
-              <div>Features: OCR contracts, payment optimization, price monitoring, compliance tracking.</div>
+              <div>Features: OCR contracts, payment optimization, price monitoring.</div>
             </div>
           </main>
         </div>

@@ -23,8 +23,16 @@ export interface ApiInvoice {
   paymentTerms: string;
   earlyPayDiscount?: number;
   lateFee?: number;
+  status?: 'paid' | 'pending' | string;
+  paidDate?: string | null;
+  paidAmount?: number | null;
   createdAt: string;
   updatedAt: string;
+  // Vendor information might be included in the API response
+  vendor?: {
+    id: string;
+    name: string;
+  };
 }
 
 export interface PerformanceData {
@@ -44,11 +52,16 @@ export class ApiService {
 
   private async getHeaders(): Promise<HeadersInit> {
     const token = await this.getToken();
-    return {
+    console.log('Getting headers with token:', token ? 'Token present' : 'No token');
+    
+    const headers = {
       'Content-Type': 'application/json',
       'ngrok-skip-browser-warning': 'true',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
+    
+    console.log('Headers being sent:', headers);
+    return headers;
   }
 
   private async getFormHeaders(): Promise<HeadersInit> {
@@ -135,7 +148,10 @@ export class ApiService {
     }
     
     const data = await response.json();
-    return Array.isArray(data) ? data : data?.invoices ?? [];
+    const invoices = Array.isArray(data) ? data : data?.invoices ?? [];
+    
+    
+    return invoices;
   }
 
   async getVendorInvoices(vendorId: string): Promise<ApiInvoice[]> {
@@ -164,14 +180,20 @@ export class ApiService {
   }
 
   async createInvoice(vendorId: string, invoiceData: Partial<ApiInvoice>): Promise<ApiInvoice> {
+    const headers = await this.getHeaders();
+    console.log('Creating invoice with headers:', headers);
+    console.log('Invoice data being sent:', invoiceData);
+    
     const response = await fetch(`${this.baseUrl}/vendor/${vendorId}/invoice`, {
       method: 'POST',
-      headers: await this.getHeaders(),
+      headers,
       body: JSON.stringify(invoiceData),
     });
     
     if (!response.ok) {
-      throw new Error(`Failed to create invoice: ${response.status}`);
+      const errorText = await response.text().catch(() => '');
+      console.error(`Invoice creation failed: ${response.status} ${response.statusText}`, errorText);
+      throw new Error(`Failed to create invoice: ${response.status} ${errorText}`);
     }
     
     return response.json();
@@ -240,8 +262,6 @@ export class ApiService {
 let apiServiceInstance: ApiService | null = null;
 
 export function getApiService(getToken: () => Promise<string | null>): ApiService {
-  if (!apiServiceInstance) {
-    apiServiceInstance = new ApiService(getToken);
-  }
-  return apiServiceInstance;
+  // Always create a new instance to ensure fresh token
+  return new ApiService(getToken);
 }

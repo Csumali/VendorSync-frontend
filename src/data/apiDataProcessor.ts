@@ -9,10 +9,12 @@ export class ApiDataProcessor {
     this.vendors = vendors;
     this.invoices = invoices;
     this.performanceData = performanceData;
+    
   }
 
   // Calculate KPIs based on API data
   public getKPIs(): KPIs {
+    
     const now = new Date();
     const thirtyDaysFromNow = new Date(now.getTime() + (30 * 24 * 60 * 60 * 1000));
 
@@ -31,26 +33,42 @@ export class ApiDataProcessor {
       return dueDate > now && dueDate <= thirtyDaysFromNow;
     }).length;
 
-    // Projected savings: total of all invoice discounts
+    // Projected savings: calculate actual savings from early pay discounts
     const projectedSavings = this.invoices.reduce((sum, invoice) => {
-      return sum + (invoice.earlyPayDiscount || 0);
+      if (invoice.earlyPayDiscount && invoice.earlyPayDiscount > 0) {
+        // Calculate savings as percentage of total amount
+        const savings = (invoice.totalAmount * invoice.earlyPayDiscount) / 100;
+        return sum + savings;
+      }
+      return sum;
     }, 0);
 
-    // Total spend: sum of all invoice amounts
-    const totalSpend = this.invoices.reduce((sum, invoice) => {
-      return sum + invoice.totalAmount;
-    }, 0);
+    // Total spend is now managed by global variable, so we return 0 here
+    // The actual total spend will be managed by the global variable in dataService
+    const totalSpend = 0;
 
-    // Average invoice amount
-    const averageInvoiceAmount = this.invoices.length > 0 ? totalSpend / this.invoices.length : 0;
+    // Average invoice amount (based on paid invoices only)
+    const paidInvoices = this.invoices.filter(invoice => invoice.status === 'paid' || invoice.paidDate);
+    // For average calculation, we'll calculate it from the actual paid invoices
+    const actualTotalSpend = paidInvoices.reduce((sum, invoice) => {
+      const amount = Number(invoice.totalAmount);
+      return Number.isFinite(amount) && amount >= 0 ? sum + amount : sum;
+    }, 0);
+    const averageInvoiceAmount = paidInvoices.length > 0 ? actualTotalSpend / paidInvoices.length : 0;
+
+    // Validate final total spend value
+    const validatedTotalSpend = Number.isFinite(totalSpend) && totalSpend >= 0 && totalSpend <= 1000000000 
+      ? totalSpend 
+      : 0; // Cap at $1B and default to 0 for invalid values
+
 
     return {
       totalVendors,
       activeContracts,
       upcomingPayments,
-      projectedSavings,
-      totalSpend,
-      averageInvoiceAmount
+      projectedSavings: Math.round(projectedSavings),
+      totalSpend: Math.round(validatedTotalSpend),
+      averageInvoiceAmount: Math.round(averageInvoiceAmount)
     };
   }
 
@@ -62,8 +80,13 @@ export class ApiDataProcessor {
       // Get all invoices for this vendor
       const vendorInvoices = this.invoices.filter(invoice => invoice.vendorId === apiVendor.id);
       
-      // Calculate metrics
-      const totalSpend = vendorInvoices.reduce((sum, invoice) => sum + invoice.totalAmount, 0);
+      // Calculate metrics (only paid invoices contribute to spend)
+      const totalSpend = vendorInvoices.reduce((sum, invoice) => {
+        if (invoice.status === 'paid' || invoice.paidDate) {
+          return sum + invoice.totalAmount;
+        }
+        return sum;
+      }, 0);
       const invoiceCount = vendorInvoices.length;
       
       // Calculate compliance status
@@ -185,6 +208,7 @@ export class ApiDataProcessor {
   public getCalendarEvents(year?: number, month?: number): CalendarEvent[] {
     const events: CalendarEvent[] = [];
     
+    
     this.invoices.forEach(invoice => {
       const dueDate = new Date(invoice.dueDate);
       const invoiceYear = dueDate.getFullYear();
@@ -199,19 +223,37 @@ export class ApiDataProcessor {
         return;
       }
       
-      // Find vendor name
-      const vendor = this.vendors.find(v => v.id === invoice.vendorId);
-      const vendorName = vendor?.name || 'Unknown Vendor';
+      // Find vendor name - try multiple sources
+      let vendorName = 'Unknown Vendor';
+      
+      // First, try to get vendor name from the invoice object itself (if API includes it)
+      if (invoice.vendor?.name) {
+        vendorName = invoice.vendor.name;
+      } else {
+        // Fallback to vendor lookup
+        const vendor = this.vendors.find(v => v.id === invoice.vendorId);
+        if (vendor?.name) {
+          vendorName = vendor.name;
+        } else {
+          // Last resort: use vendor ID
+          vendorName = `Vendor ${invoice.vendorId}`;
+        }
+      }
       
       // Determine event type based on payment terms and dates
-      let type: 'soon' | 'due' | 'save' = 'due';
+      let type: 'soon' | 'due' | 'save' | 'future' = 'due';
       const now = new Date();
       const daysUntilDue = Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
       
       if (invoice.earlyPayDiscount && invoice.earlyPayDiscount > 0) {
         type = 'save';
-      } else if (daysUntilDue <= 7) {
+      } else if (daysUntilDue <= 7 && daysUntilDue >= 0) {
         type = 'soon';
+      } else if (daysUntilDue > 7) {
+        type = 'future';
+      } else {
+        // daysUntilDue < 0 (overdue)
+        type = 'due';
       }
       
       // Create event label (truncate vendor name if too long)
@@ -220,7 +262,9 @@ export class ApiDataProcessor {
       events.push({
         day,
         label,
-        type
+        type,
+        vendorId: invoice.vendorId,
+        fullVendorName: vendorName
       });
     });
     
@@ -230,8 +274,11 @@ export class ApiDataProcessor {
       if (!existing) {
         acc.push(event);
       } else {
-        // If multiple events on same day, combine labels
+        // If multiple events on same day, combine labels and vendor names
         existing.label = existing.label + ', ' + event.label;
+        if (existing.fullVendorName && event.fullVendorName) {
+          existing.fullVendorName = existing.fullVendorName + ', ' + event.fullVendorName;
+        }
       }
       return acc;
     }, [] as CalendarEvent[]);
@@ -251,6 +298,47 @@ export class ApiDataProcessor {
     return Array.from({ length: 12 }, (_, i) => 
       Math.round(baseSavings * (1 + Math.sin(i * 0.5) * 0.3 + Math.random() * 0.2))
     );
+  }
+
+  public getMonthlyTotals(): { months: string[], amounts: number[] } {
+    console.log('ApiDataProcessor: getMonthlyTotals called, total invoices:', this.invoices.length);
+    
+    // Get the last 12 months
+    const now = new Date();
+    const months: string[] = [];
+    const amounts: number[] = [];
+    
+    for (let i = 11; i >= 0; i--) {
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthKey = date.toISOString().substring(0, 7); // YYYY-MM format
+      const monthName = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+      months.push(monthName);
+      
+      // Calculate total amount for this month from PAID invoices only
+      const paidInvoices = this.invoices.filter(invoice => {
+        // Only include paid invoices
+        if (invoice.status !== 'paid' && !invoice.paidDate) {
+          return false;
+        }
+        
+        // Use paidDate if available, otherwise use invoice date for paid invoices
+        const paymentDate = invoice.paidDate ? new Date(invoice.paidDate) : new Date(invoice.date);
+        return paymentDate.getFullYear() === date.getFullYear() && 
+               paymentDate.getMonth() === date.getMonth();
+      });
+      
+      const monthTotal = paidInvoices.reduce((sum, invoice) => {
+        // Use paidAmount if available, otherwise use totalAmount
+        const amount = invoice.paidAmount ? Number(invoice.paidAmount) : Number(invoice.totalAmount);
+        return Number.isFinite(amount) && amount >= 0 ? sum + amount : sum;
+      }, 0);
+      
+      console.log(`ApiDataProcessor: ${monthName} - ${paidInvoices.length} paid invoices, total: $${monthTotal}`);
+      amounts.push(Math.round(monthTotal));
+    }
+    
+    console.log('ApiDataProcessor: Final monthly totals:', { months, amounts });
+    return { months, amounts };
   }
 
   // Helper methods

@@ -6,6 +6,7 @@ import Link from 'next/link';
 
 import Sidebar from '@/components/Sidebar';
 import Header, { type OptimizationMode } from '@/components/Header';
+import { addToGlobalTotalSpend, subtractFromGlobalTotalSpend, getGlobalTotalSpend } from '@/data/dataService';
 
 /* ========================= Types ========================= */
 
@@ -250,6 +251,18 @@ export default function PaymentsPage() {
         const t = await res.text().catch(() => '');
         throw new Error(`Mark paid failed: ${res.status} ${t}`);
       }
+      
+      // Update global total spend
+      addToGlobalTotalSpend(inv.totalAmount);
+      
+      // Dispatch custom event to update total spend in dashboard
+      window.dispatchEvent(new CustomEvent('total-spend-update', {
+        detail: { amount: inv.totalAmount, action: 'add' }
+      }));
+      
+      // Also dispatch the general dashboard refresh event
+      window.dispatchEvent(new CustomEvent('dashboard-refresh'));
+      
     } catch (e) {
       setInvoices(prev); // rollback
       alert((e as any)?.message ?? 'Failed to mark as paid');
@@ -282,6 +295,18 @@ export default function PaymentsPage() {
         const t = await res.text().catch(() => '');
         throw new Error(`Mark unpaid failed: ${res.status} ${t}`);
       }
+      
+      // Update global total spend
+      subtractFromGlobalTotalSpend(inv.totalAmount);
+      
+      // Dispatch custom event to update total spend in dashboard
+      window.dispatchEvent(new CustomEvent('total-spend-update', {
+        detail: { amount: inv.totalAmount, action: 'subtract' }
+      }));
+      
+      // Also dispatch the general dashboard refresh event
+      window.dispatchEvent(new CustomEvent('dashboard-refresh'));
+      
     } catch (e) {
       setInvoices(prev); // rollback
       alert((e as any)?.message ?? 'Failed to mark as unpaid');
