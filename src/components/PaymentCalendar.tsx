@@ -1,13 +1,24 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useAuth } from '@clerk/nextjs';
 import { CalendarEvent } from '@/types';
-import { getCalendarEvents } from '@/data/dataService';
 import styles from './PaymentCalendar.module.css';
 
 interface PaymentCalendarProps {
   events?: CalendarEvent[]; // Make optional since we'll load events dynamically
 }
+
+type Vendor = {
+  id: string;
+  name: string;
+  address?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  user?: { id: string };
+};
 
 interface DatePickerProps {
   isOpen: boolean;
@@ -80,12 +91,16 @@ function DatePicker({ isOpen, onClose, onSelect, currentYear, currentMonth }: Da
 }
 
 export default function PaymentCalendar({ events: propEvents }: PaymentCalendarProps) {
+  const { isLoaded, isSignedIn, getToken } = useAuth();
   const now = new Date();
   const [currentDate, setCurrentDate] = useState(now);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>(propEvents || []);
   const [loadingEvents, setLoadingEvents] = useState(false);
   const [showScrollHint, setShowScrollHint] = useState(false);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [invoices, setInvoices] = useState<any[]>([]);
+  const [vendorNames, setVendorNames] = useState<Record<string, string>>({});
   
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -100,27 +115,220 @@ export default function PaymentCalendar({ events: propEvents }: PaymentCalendarP
   const isCurrentMonth = today.getFullYear() === year && today.getMonth() === month;
   const todayDate = today.getDate();
 
-  // Load calendar events for the current month/year
+  // Load vendors directly from API (like vendors page does)
   useEffect(() => {
-    const loadEvents = async () => {
+    if (!isLoaded || !isSignedIn) return;
+
+    let cancelled = false;
+    (async () => {
       try {
-        setLoadingEvents(true);
-        const events = await getCalendarEvents(year, month);
-        setCalendarEvents(events);
-      } catch (error) {
-        console.error('Error loading calendar events:', error);
-        setCalendarEvents(propEvents || []);
-      } finally {
-        setLoadingEvents(false);
+        const token = await getToken();
+        const upstream = process.env.NEXT_PUBLIC_API_BASE + '/vendor';
+
+        if (!upstream) {
+          throw new Error('Vendors API URL is not defined.');
+        }
+
+        const res = await fetch(upstream, {
+          method: 'GET',
+          headers: {
+            'ngrok-skip-browser-warning': 'true',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          cache: 'no-store',
+        });
+
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(`Fetch failed (${res.status}) ${text ? `- ${text}` : ''}`.trim());
+        }
+
+        const data = await res.json();
+        if (cancelled) return;
+
+        const vendorList: Vendor[] = Array.isArray(data) ? data : data?.vendors ?? [];
+        console.log('PaymentCalendar: Fetched vendors:', vendorList);
+        setVendors(vendorList);
+      } catch (e: any) {
+        console.error('Error loading vendors:', e?.message ?? 'Failed to load vendors.');
       }
+    })();
+
+    return () => { cancelled = true; };
+  }, [isLoaded, isSignedIn, getToken]);
+
+  // Load invoices directly from API
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getToken();
+        const upstream = process.env.NEXT_PUBLIC_API_BASE + '/vendor/invoice/all';
+
+        if (!upstream) {
+          throw new Error('Invoices API URL is not defined.');
+        }
+
+        const res = await fetch(upstream, {
+          method: 'GET',
+          headers: {
+            'ngrok-skip-browser-warning': 'true',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          cache: 'no-store',
+        });
+
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(`Fetch failed (${res.status}) ${text ? `- ${text}` : ''}`.trim());
+        }
+
+        const data = await res.json();
+        if (cancelled) return;
+
+        const invoiceList = Array.isArray(data) ? data : data?.invoices ?? [];
+        console.log('PaymentCalendar: Fetched invoices:', invoiceList);
+        setInvoices(invoiceList);
+        
+        // Hydrate vendor names from invoice vendor IDs
+        const vendorIds = Array.from(new Set(invoiceList.map((inv: any) => inv.vendorId || inv.vendor?.id).filter(Boolean))) as string[];
+        if (vendorIds.length > 0) {
+          hydrateVendorNames(vendorIds);
+        }
+      } catch (e: any) {
+        console.error('Error loading invoices:', e?.message ?? 'Failed to load invoices.');
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [isLoaded, isSignedIn, getToken]);
+
+  // Hydrate vendor names from vendor IDs found in invoices
+  const hydrateVendorNames = async (vendorIds: string[]) => {
+    const token = await getToken();
+    const headers = {
+      'ngrok-skip-browser-warning': 'true',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
 
-    loadEvents();
-  }, [year, month, propEvents]);
+    const pairs = await Promise.all(vendorIds.map(async id => {
+      try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/vendor/${id}`, { 
+          headers, 
+          cache: 'no-store' 
+        });
+        if (!res.ok) return [id, null] as const;
+        const vendor = await res.json();
+        return [id, (vendor?.name ?? '').toString().trim() || null] as const;
+      } catch { 
+        return [id, null] as const; 
+      }
+    }));
+
+    const map: Record<string, string> = {};
+    pairs.forEach(([id, name]) => { 
+      if (name) map[id] = name; 
+    });
+    
+    if (Object.keys(map).length) {
+      setVendorNames(prev => ({ ...prev, ...map }));
+    }
+  };
+
+  // Generate calendar events from vendors and invoices data
+  useEffect(() => {
+    console.log('PaymentCalendar: Generating events - vendors:', vendors.length, 'invoices:', invoices.length);
+    
+    if (vendors.length === 0 || invoices.length === 0) {
+      console.log('PaymentCalendar: Not enough data, using prop events');
+      setCalendarEvents(propEvents || []);
+      return;
+    }
+
+    const events: CalendarEvent[] = [];
+    
+    invoices.forEach(invoice => {
+      const dueDate = new Date(invoice.dueDate);
+      const invoiceYear = dueDate.getFullYear();
+      const invoiceMonth = dueDate.getMonth();
+      const day = dueDate.getDate();
+      
+      // Filter by year and month if provided
+      if (invoiceYear !== year || invoiceMonth !== month) {
+        return;
+      }
+      
+      // Find vendor name - try multiple sources
+      const vendorId = invoice.vendorId || invoice.vendor?.id;
+      let vendorName = `Vendor ${vendorId}`;
+      
+      // First try hydrated vendor names
+      if (vendorNames[vendorId]) {
+        vendorName = vendorNames[vendorId];
+      } else {
+        // Fallback to vendors array
+        const vendor = vendors.find(v => v.id === vendorId);
+        if (vendor?.name) {
+          vendorName = vendor.name;
+        }
+      }
+      
+      console.log(`PaymentCalendar: Invoice ${invoice.invoiceNumber} - vendorId: ${vendorId}, vendorName: ${vendorName}`);
+      
+      // Determine event type based on payment terms and dates
+      let type: 'soon' | 'due' | 'save' | 'future' = 'due';
+      const now = new Date();
+      const daysUntilDue = Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (invoice.earlyPayDiscount && invoice.earlyPayDiscount > 0) {
+        type = 'save';
+      } else if (daysUntilDue <= 7 && daysUntilDue >= 0) {
+        type = 'soon';
+      } else if (daysUntilDue > 7) {
+        type = 'future';
+      } else {
+        // daysUntilDue < 0 (overdue)
+        type = 'due';
+      }
+      
+      // Create event label (truncate vendor name if too long)
+      const label = vendorName.length > 8 ? vendorName.substring(0, 8) + '...' : vendorName;
+      
+      events.push({
+        day,
+        label,
+        type,
+        vendorId: invoice.vendorId,
+        fullVendorName: vendorName
+      });
+    });
+    
+    // Remove duplicates and sort by day
+    const uniqueEvents = events.reduce((acc, event) => {
+      const existing = acc.find(e => e.day === event.day);
+      if (!existing) {
+        acc.push(event);
+      } else {
+        // If multiple events on same day, combine labels and vendor names
+        existing.label = existing.label + ', ' + event.label;
+        if (existing.fullVendorName && event.fullVendorName) {
+          existing.fullVendorName = existing.fullVendorName + ', ' + event.fullVendorName;
+        }
+      }
+      return acc;
+    }, [] as CalendarEvent[]);
+    
+    const finalEvents = uniqueEvents.sort((a, b) => a.day - b.day);
+    console.log('PaymentCalendar: Generated events:', finalEvents);
+    setCalendarEvents(finalEvents);
+  }, [year, month, vendors, invoices, vendorNames, propEvents]);
 
   const getEventForDay = (day: number) => {
     return calendarEvents.find(event => event.day === day);
   };
+
 
   const goToPreviousMonth = () => {
     setCurrentDate(new Date(year, month - 1, 1));
@@ -190,7 +398,10 @@ export default function PaymentCalendar({ events: propEvents }: PaymentCalendarP
                     {dayNum}
                   </div>
                   {event && (
-                    <div className={`${styles.badge} ${styles[event.type]}`}>
+                    <div 
+                      className={`${styles.badge} ${styles[event.type]}`}
+                      data-tooltip={event.fullVendorName || event.label}
+                    >
                       {event.label}
                     </div>
                   )}

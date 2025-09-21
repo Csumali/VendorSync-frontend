@@ -3,6 +3,8 @@
 import { useMemo, useState } from 'react';
 import { useAuth, useUser } from '@clerk/nextjs';
 import ScanContractModal from './ScanContractModal';
+import DataConfirmationModal from './DataConfirmationModal';
+import { getApiService } from '@/data/apiService';
 
 export type OptimizationMode = 'Balanced' | 'Max Savings' | 'Cash Heavy';
 
@@ -87,6 +89,8 @@ function ymd(s?: string | null) {
 }
 
 function buildInvoiceBody(extract: UploadExtract) {
+  console.log('Building invoice body from extract:', extract);
+  
   const fin = extract.invoice_details?.financial_data;
 
   const invoiceNumber = extract.invoice_details?.invoice_number?.text ?? '';
@@ -96,12 +100,17 @@ function buildInvoiceBody(extract: UploadExtract) {
   const subtotal = parseMoney(fin?.subtotal) ?? 0;
   const totalAmount = parseMoney(fin?.total_amount) ?? subtotal;
 
-  const paymentTerms = fin?.payment_terms?.early_pay_discount?.text?.trim();
+  // Handle payment terms more robustly
+  const paymentTerms = fin?.payment_terms?.terms_text?.trim() || 
+                      fin?.payment_terms?.standardized?.trim() || 
+                      fin?.payment_terms?.early_pay_discount?.text?.trim() || 
+                      '';
 
-  const earlyPayDiscount =
-    fin?.payment_terms?.early_pay_discount?.percentage ?? 0;
+  // Handle early pay discount more robustly
+  const earlyPayDiscount = fin?.payment_terms?.early_pay_discount?.percentage ?? 
+                          fin?.payment_terms?.early_pay_discount?.found ? 2 : 0; // Default 2% if found but no percentage
 
-  return {
+  const invoiceBody = {
     invoiceNumber,
     date,
     dueDate,
@@ -110,6 +119,9 @@ function buildInvoiceBody(extract: UploadExtract) {
     paymentTerms,
     earlyPayDiscount,
   };
+  
+  console.log('Built invoice body:', invoiceBody);
+  return invoiceBody;
 }
 
 const norm = (s: string | null | undefined) =>
@@ -140,6 +152,8 @@ export default function Header({
   const { user, isLoaded } = useUser();
   const { getToken } = useAuth();
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
+  const [isConfirmationModalOpen, setIsConfirmationModalOpen] = useState(false);
+  const [extractedData, setExtractedData] = useState<UploadExtract | null>(null);
   const [busy, setBusy] = useState(false);
 
   const modes: OptimizationMode[] = ['Balanced', 'Max Savings', 'Cash Heavy'];
@@ -157,44 +171,43 @@ export default function Header({
       const token = await getToken();
       if (!token) throw new Error('Not authenticated');
 
+      const apiService = getApiService(getToken);
+
       // 1) upload the document to extract data
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const commonHeaders: HeadersInit = {
-        'ngrok-skip-browser-warning': 'true',
-        Authorization: `Bearer ${token}`,
-      };
-
-      const uploadRes = await fetch(`${apiBase}/vendor/invoice/upload`, {
-        method: 'POST',
-        body: formData,
-        headers: commonHeaders,
-      });
-      if (!uploadRes.ok) {
-        const t = await uploadRes.text().catch(() => '');
-        throw new Error(`Upload failed: ${uploadRes.status} ${t}`);
-      }
-      const extract: UploadExtract = await uploadRes.json();
-
+      const extract: UploadExtract = await apiService.uploadInvoice(file);
       console.log('Extracted invoice data:', extract);
 
-      // 2) create (or upsert) the vendor
-      const vendorBody = buildVendorBody(extract);
+      // 2) Show confirmation modal with extracted data
+      setExtractedData(extract);
+      setIsScanModalOpen(false);
+      setIsConfirmationModalOpen(true);
+
+    } catch (err: any) {
+      console.error(err);
+      alert(err?.message || 'Failed to process invoice.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDataConfirmation = async (confirmedData: UploadExtract) => {
+    setBusy(true);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error('Not authenticated');
+
+      const apiService = getApiService(getToken);
+
+      // 2) create (or upsert) the vendor with confirmed data
+      const vendorBody = buildVendorBody(confirmedData);
       console.log('Creating vendor with data:', vendorBody);
       if (!vendorBody.name) throw new Error('No vendor name detected from invoice');
 
       // 2a) Pull current vendors
-      const listRes = await fetch(`${apiBase}/vendor`, { headers: commonHeaders });
-      if (!listRes.ok) {
-        const t = await listRes.text().catch(() => '');
-        throw new Error(`Fetch vendors failed: ${listRes.status} ${t}`);
-      }
-      const listJson = await listRes.json();
-      const rows: VendorRow[] = Array.isArray(listJson) ? listJson : listJson?.vendors ?? [];
+      const existingVendors = await apiService.getVendors();
 
       // 2b) Try to find a match (by normalized name or email)
-      const existing = rows.find((v) => isSameVendor(v, { name: vendorBody.name, email: vendorBody.email ?? '' }));
+      const existing = existingVendors.find((v) => isSameVendor(v, { name: vendorBody.name, email: vendorBody.email ?? '' }));
       // Ensure email is null if empty string
       if (vendorBody.email === '') {
         vendorBody.email = null;
@@ -204,40 +217,66 @@ export default function Header({
         vendorId = existing.id;
       } else {
         // 2c) Create vendor
-        const vendorRes = await fetch(`${apiBase}/vendor`, {
-          method: 'POST',
-          headers: { ...commonHeaders, 'Content-Type': 'application/json' },
-          body: JSON.stringify(vendorBody),
-        });
-        if (!vendorRes.ok) {
-          const t = await vendorRes.text().catch(() => '');
-          throw new Error(`Create vendor failed: ${vendorRes.status} ${t}`);
-        }
-        const vendorJson = await vendorRes.json();
-        vendorId = vendorJson.id;
-        if (!vendorId) throw new Error('Vendor created but id missing in response');
+        const newVendor = await apiService.createVendor(vendorBody);
+        vendorId = newVendor.id;
       }
-      // 3) create the invoice for that vendor
-      const invoiceBody = buildInvoiceBody(extract);
+      
+      // 3) Check if invoice already exists before creating
+      const invoiceBody = buildInvoiceBody(confirmedData);
       console.log('Creating invoice with data:', invoiceBody);
-      const invoiceRes = await fetch(`${apiBase}/vendor/${vendorId}/invoice`, {
-        method: 'POST',
-        headers: { ...commonHeaders, 'Content-Type': 'application/json' },
-        body: JSON.stringify(invoiceBody),
-      });
-      if (!invoiceRes.ok) {
-        const t = await invoiceRes.text().catch(() => '');
-        throw new Error(`Create invoice failed: ${invoiceRes.status} ${t}`);
+      console.log('Vendor ID for invoice creation:', vendorId);
+      console.log('API Base URL:', process.env.NEXT_PUBLIC_API_BASE);
+      
+      // Check for existing invoice with same invoice number
+      const existingInvoices = await apiService.getVendorInvoices(vendorId);
+      const existingInvoice = existingInvoices.find(inv => inv.invoiceNumber === invoiceBody.invoiceNumber);
+      
+      let invoiceAction = '';
+      
+      if (existingInvoice) {
+        // Invoice already exists, ask user what to do
+        const userChoice = confirm(
+          `Invoice number "${invoiceBody.invoiceNumber}" already exists for this vendor.\n\n` +
+          `Would you like to:\n` +
+          `• OK - Update the existing invoice with new data\n` +
+          `• Cancel - Keep the existing invoice unchanged`
+        );
+        
+        if (userChoice) {
+          await apiService.updateInvoice(vendorId, existingInvoice.id, invoiceBody);
+          console.log('Updated existing invoice:', existingInvoice.id);
+          invoiceAction = 'updated';
+        } else {
+          throw new Error('Invoice creation cancelled - duplicate invoice number');
+        }
+      } else {
+        // Invoice doesn't exist, create new one
+        await apiService.createInvoice(vendorId, invoiceBody);
+        console.log('Created new invoice successfully');
+        invoiceAction = 'created';
       }
 
-      setIsScanModalOpen(false);
-      alert('✅ Vendor and invoice created successfully.');
+      setIsConfirmationModalOpen(false);
+      setExtractedData(null);
+      
+      if (invoiceAction === 'updated') {
+        alert('✅ Invoice updated successfully with new data.');
+      } else {
+        alert('✅ Vendor and invoice created successfully.');
+      }
     } catch (err: any) {
       console.error(err);
-      alert(err?.message || 'Failed to process invoice.');
+      alert(err?.message || 'Failed to create vendor and invoice.');
     } finally {
       setBusy(false);
     }
+  };
+
+  const handleDataConfirmationCancel = () => {
+    setIsConfirmationModalOpen(false);
+    setExtractedData(null);
+    // Optionally reopen the scan modal
+    // setIsScanModalOpen(true);
   };
 
   const displayName = !isLoaded
@@ -303,6 +342,13 @@ export default function Header({
         onClose={() => setIsScanModalOpen(false)}
         onConfirm={handleScanConfirm}
         onDataConfirmation={() => {}}
+      />
+
+      <DataConfirmationModal
+        isOpen={isConfirmationModalOpen}
+        extractedData={extractedData}
+        onConfirm={handleDataConfirmation}
+        onCancel={handleDataConfirmationCancel}
       />
     </header>
   );

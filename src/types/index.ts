@@ -1,4 +1,45 @@
-// JSON Invoice Data Structure
+// API Response Types
+export interface ApiVendor {
+  id: string;
+  name: string;
+  address?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  user?: { id: string };
+}
+
+export interface ApiInvoice {
+  id: string;
+  vendorId: string;
+  invoiceNumber: string;
+  date: string;
+  dueDate: string;
+  subtotal: number;
+  totalAmount: number;
+  paymentTerms: string;
+  earlyPayDiscount?: number;
+  lateFee?: number;
+  status?: 'paid' | 'pending' | string | null;
+  paidDate?: string | null;
+  paidAmount?: number | null;
+  createdAt: string;
+  updatedAt: string;
+  // Vendor information might be included in the API response
+  vendor?: {
+    id: string;
+    name: string;
+  };
+}
+
+export interface PerformanceData {
+  month: string;
+  totalAmount: number;
+  vendorCount: number;
+}
+
+// Legacy JSON Invoice Data Structure (kept for backward compatibility)
 export interface InvoiceData {
   vendor_information: {
     company_name: { text: string };
@@ -80,7 +121,9 @@ export interface KPIs {
 export interface CalendarEvent {
   day: number;
   label: string;
-  type: 'soon' | 'due' | 'save';
+  type: 'soon' | 'due' | 'save' | 'future';
+  vendorId?: string; // Add vendor ID for lookup
+  fullVendorName?: string; // Add full vendor name for tooltip
 }
 
 export type OptimizationMode = 'Balanced' | 'Max Savings' | 'Cash Heavy';
