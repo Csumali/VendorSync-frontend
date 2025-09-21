@@ -33,8 +33,20 @@ export default function VendorsPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  const upstream =
-    process.env.NEXT_PUBLIC_API_BASE + '/vendor';
+  // Edit/Delete state
+  const [editId, setEditId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || '').replace(/\/$/, '');
+  const upstream = API_BASE ? `${API_BASE}/vendor` : '';
+
+  async function getAuthHeaders() {
+    const token = await getToken();
+    return {
+      'ngrok-skip-browser-warning': 'true',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    } as HeadersInit;
+  }
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
@@ -45,20 +57,12 @@ export default function VendorsPage() {
         setLoading(true);
         setErr(null);
 
-        const token = await getToken();
-
         if (!upstream) {
-          throw new Error('Vendors API URL is not defined.');
+          throw new Error('Vendors API URL is not defined. Set NEXT_PUBLIC_API_BASE in .env.local');
         }
 
-        const res = await fetch(upstream, {
-          method: 'GET',
-          headers: {
-            'ngrok-skip-browser-warning': 'true',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          cache: 'no-store',
-        });
+        const headers = await getAuthHeaders();
+        const res = await fetch(upstream, { method: 'GET', headers, cache: 'no-store' });
 
         if (!res.ok) {
           const text = await res.text().catch(() => '');
@@ -66,11 +70,9 @@ export default function VendorsPage() {
         }
 
         const data = await res.json();
-        console.log('Fetched vendors:', data);
-        if (cancelled) return;
-
         const list: Vendor[] = Array.isArray(data) ? data : data?.vendors ?? [];
-        setVendors(list);
+
+        if (!cancelled) setVendors(list);
       } catch (e: any) {
         if (!cancelled) setErr(e?.message ?? 'Failed to load vendors.');
       } finally {
@@ -78,22 +80,66 @@ export default function VendorsPage() {
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [isLoaded, isSignedIn, getToken, upstream]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return vendors;
-    return vendors.filter(v =>
-      [v.name, v.email ?? '', v.phone ?? '', v.address ?? '']
-        .join(' ')
-        .toLowerCase()
-        .includes(q),
+    return vendors.filter((v) =>
+      [v.name, v.email ?? '', v.phone ?? '', v.address ?? ''].join(' ').toLowerCase().includes(q),
     );
   }, [vendors, query]);
 
+  // ---- Actions ----
+  async function saveEditVendor(vendorId: string, patch: Partial<Pick<Vendor, 'name' | 'email' | 'phone' | 'address'>>) {
+    const prev = vendors;
+    // optimistic
+    setVendors((cur) => cur.map((v) => (v.id === vendorId ? { ...v, ...patch } as Vendor : v)));
+
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${API_BASE}/vendor/${vendorId}`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => '');
+        throw new Error(`Update failed: ${res.status} ${t}`);
+      }
+      setEditId(null);
+    } catch (e) {
+      setVendors(prev); // rollback
+      alert((e as any)?.message ?? 'Failed to update vendor');
+    }
+  }
+
+  async function deleteVendor(vendorId: string) {
+    const prev = vendors;
+    // optimistic
+    setVendors((cur) => cur.filter((v) => v.id !== vendorId));
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${API_BASE}/vendor/${vendorId}`, {
+        method: 'DELETE',
+        headers,
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => '');
+        throw new Error(`Delete failed: ${res.status} ${t}`);
+      }
+      setConfirmDeleteId(null);
+    } catch (e) {
+      setVendors(prev); // rollback
+      alert((e as any)?.message ?? 'Failed to delete vendor');
+    }
+  }
+
   // Auth / loading gates
-   if (!isLoaded) {
+  if (!isLoaded) {
     return (
       <div className={styles.app}>
         <div className="grid h-dvh place-items-center text-[var(--text)]">Loading…</div>
@@ -127,7 +173,7 @@ export default function VendorsPage() {
             onOpenSidebar={() => setMobileOpen(true)}
           />
 
-          <main className="p-4 md:p-6 space-y-4">
+          <main className="space-y-4 p-4 md:p-6">
             {/* Header row */}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h1 className="text-[22px] font-bold">Vendors</h1>
@@ -162,10 +208,7 @@ export default function VendorsPage() {
                   </div>
                 ) : (
                   filtered.map((v) => (
-                    <article
-                      key={v.id}
-                      className="rounded-xl border border-[var(--border)] bg-[var(--panel)] p-4"
-                    >
+                    <article key={v.id} className="rounded-xl border border-[var(--border)] bg-[var(--panel)] p-4">
                       <div className="mb-2">
                         <h2 className="text-base font-semibold">{v.name}</h2>
                       </div>
@@ -186,14 +229,19 @@ export default function VendorsPage() {
                         </p>
                       </div>
 
-                      <div className="mt-3 flex justify-end">
-                        <Link
-                          href={`/vendors/${v.id}`}
-                          prefetch={false}
+                      <div className="mt-3 flex flex-wrap justify-end gap-2">
+                        <button
+                          onClick={() => setEditId(v.id)}
                           className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm hover:bg-black/10"
                         >
-                          View
-                        </Link>
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => setConfirmDeleteId(v.id)}
+                          className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-red-300 hover:bg-red-500/10"
+                        >
+                          Delete
+                        </button>
                       </div>
                     </article>
                   ))
@@ -208,21 +256,11 @@ export default function VendorsPage() {
                   <table className="w-full border-collapse">
                     <thead>
                       <tr className="border-b border-[var(--border)] text-left">
-                        <th className="px-3 py-3 text-xs font-semibold text-[var(--subtext)]">
-                          Vendor
-                        </th>
-                        <th className="px-3 py-3 text-xs font-semibold text-[var(--subtext)]">
-                          Contact
-                        </th>
-                        <th className="px-3 py-3 text-xs font-semibold text-[var(--subtext)]">
-                          Address
-                        </th>
-                        <th className="px-3 py-3 text-xs font-semibold text-[var(--subtext)]">
-                          Created
-                        </th>
-                        <th className="px-3 py-3 text-right text-xs font-semibold text-[var(--subtext)]">
-                          Actions
-                        </th>
+                        <th className="px-3 py-3 text-xs font-semibold text-[var(--subtext)]">Vendor</th>
+                        <th className="px-3 py-3 text-xs font-semibold text-[var(--subtext)]">Contact</th>
+                        <th className="px-3 py-3 text-xs font-semibold text-[var(--subtext)]">Address</th>
+                        <th className="px-3 py-3 text-xs font-semibold text-[var(--subtext)]">Created</th>
+                        <th className="px-3 py-3 text-right text-xs font-semibold text-[var(--subtext)]">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -249,13 +287,20 @@ export default function VendorsPage() {
                               {v.createdAt ? new Date(v.createdAt).toLocaleDateString() : '—'}
                             </td>
                             <td className="px-3 py-3 text-right">
-                              <Link
-                                href={`/vendors/${v.id}`}
-                                prefetch={false}
-                                className="rounded-lg border border-[var(--border)] px-3 py-2 hover:bg-black/10"
-                              >
-                                View
-                              </Link>
+                              <div className="inline-flex flex-wrap gap-2">
+                                <button
+                                  onClick={() => setEditId(v.id)}
+                                  className="rounded-lg border border-[var(--border)] px-3 py-2 hover:bg-black/10"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  onClick={() => setConfirmDeleteId(v.id)}
+                                  className="rounded-lg border border-[var(--border)] px-3 py-2 text-red-300 hover:bg-red-500/10"
+                                >
+                                  Delete
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))
@@ -275,6 +320,201 @@ export default function VendorsPage() {
           </main>
         </div>
       </div>
+
+      {/* ======= Edit Vendor Modal ======= */}
+      {editId && (
+        <EditVendorModal
+          key={editId}
+          vendor={vendors.find((v) => v.id === editId)!}
+          onClose={() => setEditId(null)}
+          onSave={(patch) => saveEditVendor(editId, patch)}
+        />
+      )}
+
+      {/* ======= Delete Confirm ======= */}
+      {confirmDeleteId && (
+        <ConfirmDialog
+          title="Delete vendor?"
+          body="This will remove the vendor and may affect related analytics. This action cannot be undone."
+          confirmText="Delete"
+          variant="danger"
+          onCancel={() => setConfirmDeleteId(null)}
+          onConfirm={() => deleteVendor(confirmDeleteId)}
+        />
+      )}
     </div>
   );
 }
+
+/* ========================= Small modals ========================= */
+
+function ConfirmDialog({
+  title,
+  body,
+  confirmText = 'Confirm',
+  variant = 'default',
+  onCancel,
+  onConfirm,
+}: {
+  title: string;
+  body?: string;
+  confirmText?: string;
+  variant?: 'default' | 'danger';
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[100] grid place-items-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="w-full max-w-sm rounded-xl border border-white/10 bg-neutral-950 text-neutral-100 shadow-2xl p-4">
+        <h3 className="mb-2 text-lg font-semibold">{title}</h3>
+        {body && <p className="mb-4 text-sm text-[var(--subtext)]">{body}</p>}
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm hover:bg-black/10"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className={`rounded-lg px-3 py-2 text-sm ${
+              variant === 'danger'
+                ? 'border border-[var(--border)] text-red-300 hover:bg-red-500/10'
+                : 'border border-[var(--border)] hover:bg-black/10'
+            }`}
+          >
+            {confirmText}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EditVendorModal({
+  vendor,
+  onClose,
+  onSave,
+}: {
+  vendor: Vendor;
+  onClose: () => void;
+  onSave: (patch: Partial<Pick<Vendor, 'name' | 'email' | 'phone' | 'address'>>) => void;
+}) {
+  const [name, setName] = useState(vendor.name ?? '');
+  const [email, setEmail] = useState(vendor.email ?? '');
+  const [phone, setPhone] = useState(vendor.phone ?? '');
+  const [address, setAddress] = useState(vendor.address ?? '');
+
+  const E164 = /^\+[1-9]\d{7,14}$/; // E.164: + then 8–15 digits total, first digit 1–9
+
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+
+  function validatePhone(val: string): string | null {
+    const trimmed = val.trim();
+    if (!trimmed) return null; // empty allowed
+    return E164.test(trimmed) ? null : 'Phone must be E.164, e.g. +15555550123';
+  }
+
+  function onPhoneChange(v: string) {
+    setPhone(v);
+    setPhoneError(validatePhone(v));
+  }
+
+  function handleSave() {
+    const err = validatePhone(phone);
+    if (err) {
+      setPhoneError(err);
+      return;
+    }
+    onSave({
+      name: name || undefined,
+      email: email || null,
+      phone: phone.trim() ? phone.trim() : null,
+      address: address?.trim() ? address.trim() : null,
+    });
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] grid place-items-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="w-full max-w-lg rounded-xl border border-white/10 bg-neutral-950 text-neutral-100 shadow-2xl p-4">
+        <h3 className="mb-4 text-lg font-semibold">Edit Vendor</h3>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="grid gap-1">
+            <span className="text-xs text-[var(--subtext)]">Name</span>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="rounded-lg border border-[var(--border)] bg-[var(--card-2)] px-3 py-2"
+            />
+          </label>
+
+          <label className="grid gap-1">
+            <span className="text-xs text-[var(--subtext)]">Email</span>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="rounded-lg border border-[var(--border)] bg-[var(--card-2)] px-3 py-2"
+            />
+          </label>
+
+          <label className="grid gap-1">
+            <span className="text-xs text-[var(--subtext)]">Phone (E.164)</span>
+            <input
+              type="tel"
+              placeholder="+15555550123"
+              value={phone}
+              onChange={(e) => onPhoneChange(e.target.value)}
+              className={`rounded-lg border px-3 py-2 bg-[var(--card-2)] ${
+                phoneError ? 'border-red-500 focus:ring-red-500' : 'border-[var(--border)]'
+              }`}
+              aria-invalid={!!phoneError}
+              aria-describedby="phone-error"
+            />
+            {phoneError && (
+              <span id="phone-error" className="text-xs text-red-400">
+                {phoneError}
+              </span>
+            )}
+          </label>
+
+          <label className="grid gap-1 sm:col-span-2">
+            <span className="text-xs text-[var(--subtext)]">Address</span>
+            <textarea
+              value={address ?? ''}
+              onChange={(e) => setAddress(e.target.value)}
+              rows={3}
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--card-2)] px-3 py-2"
+            />
+          </label>
+        </div>
+
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm hover:bg-black/10"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={!!phoneError}
+            className="rounded-lg border border-[var(--border)] bg-[var(--chip)] px-3 py-2 text-sm hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+

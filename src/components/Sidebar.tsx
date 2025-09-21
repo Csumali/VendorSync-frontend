@@ -11,12 +11,9 @@ type NavItem = { icon: string; label: string; href?: string };
 const NAV: NavItem[] = [
   { icon: '📊', label: 'Dashboard', href: '/dashboard' },
   { icon: '🤝', label: 'Vendors', href: '/vendors' },
-  { icon: '📄', label: 'Contracts' },
   { icon: '💸', label: 'Payments', href: '/payments' },
-  { icon: '🔔', label: 'Alerts' },
-  { icon: '🛡️', label: 'Compliance' },
-  { icon: '📈', label: 'Analytics' },
-  { icon: '⚙️', label: 'Settings' },
+  { icon: '📈', label: 'Analytics', href: '/analytics' },
+  { icon: '⚙️', label: 'Settings', href: '/settings' },
 ];
 
 export default function Sidebar({
