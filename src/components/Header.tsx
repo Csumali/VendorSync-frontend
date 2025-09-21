@@ -33,7 +33,7 @@ export default function Header({ optimizationMode, onModeChange, onOpenSidebar }
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const response = await fetch(`https://abbff5cd7d1b.ngrok-free.app/vendor/invoice/upload`, {
+      const response = await fetch(process.env.NEXT_PUBLIC_CONTRACT_API_URL || `https://bf3639e4fedf.ngrok-free.app/vendor/invoice/upload`, {
         method: 'POST',
         body: formData,
         headers: {
@@ -59,11 +59,13 @@ export default function Header({ optimizationMode, onModeChange, onOpenSidebar }
     }
   };
 
-  const handleDataConfirmation = (isCorrect: boolean) => {
+  const handleDataConfirmation = (isCorrect: boolean, editedData?: any) => {
     setIsConfirmModalOpen(false);
     if (isCorrect) {
+      console.log('✅ Contract data confirmed and saved!', editedData);
       alert('✅ Contract data confirmed and saved!');
-      // Here you would typically save the data to your state/backend
+      // Here you would typically save the edited data to your state/backend
+      // You can now use editedData instead of uploadResponse for the final data
     } else {
       alert('❌ Contract data rejected. Please try uploading again.');
     }

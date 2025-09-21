@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import styles from './ScanContractModal.module.css';
 
 interface ScanContractModalProps {
@@ -9,7 +9,7 @@ interface ScanContractModalProps {
   onConfirm: (file: File) => void;
   uploadResponse?: any;
   isConfirmModalOpen: boolean;
-  onDataConfirmation: (isCorrect: boolean) => void;
+  onDataConfirmation: (isCorrect: boolean, editedData?: any) => void;
 }
 
 export default function ScanContractModal({ 
@@ -23,7 +23,125 @@ export default function ScanContractModal({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  const [editableData, setEditableData] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Initialize editable data when uploadResponse changes
+  useEffect(() => {
+    if (uploadResponse) {
+      setEditableData(uploadResponse);
+    }
+  }, [uploadResponse]);
+
+  // Function to update nested form data
+  const updateFormData = (path: string, value: string) => {
+    setEditableData((prev: any) => {
+      const newData = { ...prev };
+      const keys = path.split('.');
+      let current = newData;
+      
+      for (let i = 0; i < keys.length - 1; i++) {
+        if (!current[keys[i]]) current[keys[i]] = {};
+        current = current[keys[i]];
+      }
+      
+      current[keys[keys.length - 1]] = value;
+      return newData;
+    });
+  };
+
+  // Function to get nested value
+  const getFormValue = (path: string) => {
+    const keys = path.split('.');
+    let current = editableData;
+    
+    for (const key of keys) {
+      if (current && typeof current === 'object' && key in current) {
+        current = current[key];
+      } else {
+        return '';
+      }
+    }
+    
+    return typeof current === 'string' ? current : '';
+  };
+
+  // Function to render form fields recursively
+  const renderFormFields = (data: any, prefix = '', level = 0): React.ReactElement[] => {
+    const fields: React.ReactElement[] = [];
+    
+    if (!data || typeof data !== 'object') return fields;
+    
+    Object.entries(data).forEach(([key, value]) => {
+      const fieldPath = prefix ? `${prefix}.${key}` : key;
+      const fieldId = `field-${fieldPath.replace(/\./g, '-')}`;
+      
+      if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+        // Render nested object as a section
+        fields.push(
+          <div key={fieldId} style={{ marginLeft: `${level * 20}px`, marginBottom: '20px' }}>
+            <h5 style={{ 
+              margin: '0 0 10px 0', 
+              fontSize: '16px', 
+              fontWeight: '600', 
+              color: '#1976d2',
+              textTransform: 'capitalize',
+              borderBottom: '1px solid #e0e0e0',
+              paddingBottom: '5px'
+            }}>
+              {key.replace(/_/g, ' ')}
+            </h5>
+            {renderFormFields(value, fieldPath, level + 1)}
+          </div>
+        );
+      } else if (typeof value === 'string' || typeof value === 'number') {
+        // Render as input field
+        fields.push(
+          <div key={fieldId} style={{ marginBottom: '15px', marginLeft: `${level * 20}px` }}>
+            <label 
+              htmlFor={fieldId}
+              style={{ 
+                display: 'block', 
+                marginBottom: '5px', 
+                fontSize: '14px', 
+                fontWeight: '500',
+                color: '#333',
+                textTransform: 'capitalize'
+              }}
+            >
+              {key.replace(/_/g, ' ')}
+            </label>
+            <input
+              type="text"
+              id={fieldId}
+              value={getFormValue(fieldPath)}
+              onChange={(e) => updateFormData(fieldPath, e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                border: '2px solid #e0e0e0',
+                borderRadius: '6px',
+                fontSize: '14px',
+                backgroundColor: '#fff',
+                color: '#333',
+                transition: 'border-color 0.2s ease',
+                boxSizing: 'border-box'
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = '#1976d2';
+                e.target.style.outline = 'none';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = '#e0e0e0';
+              }}
+            />
+          </div>
+        );
+      }
+    });
+    
+    return fields;
+  };
 
   const handleFileSelect = (file: File) => {
     if (file && file.type === 'application/pdf') {
@@ -109,24 +227,23 @@ export default function ScanContractModal({
             </div>
 
             <div style={{ 
-              backgroundColor: '#f5f5f5', 
+              backgroundColor: '#f8f9fa', 
               padding: '20px', 
               borderRadius: '8px',
               marginBottom: '20px',
-              maxHeight: '400px',
-              overflow: 'auto'
+              maxHeight: '500px',
+              overflow: 'auto',
+              border: '1px solid #e0e0e0'
             }}>
-              <h4 style={{ margin: '0 0 15px 0', color: '#1976d2', fontSize: '16px', fontWeight: '600' }}>📊 Extracted Data:</h4>
-              <pre style={{ 
-                fontSize: '14px',
-                margin: 0,
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-                fontFamily: 'Monaco, Consolas, "Courier New", monospace',
-                lineHeight: '1.5'
+              <h4 style={{ margin: '0 0 20px 0', color: '#1976d2', fontSize: '18px', fontWeight: '600' }}>📊 Edit Data:</h4>
+              <div style={{ 
+                backgroundColor: '#fff', 
+                padding: '20px', 
+                borderRadius: '6px',
+                border: '1px solid #e0e0e0'
               }}>
-                {JSON.stringify(uploadResponse, null, 2)}
-              </pre>
+                {editableData && renderFormFields(editableData)}
+              </div>
             </div>
 
             <div style={{ 
@@ -152,7 +269,7 @@ export default function ScanContractModal({
               </button>
               <button 
                 className={styles.confirmBtn} 
-                onClick={() => onDataConfirmation(true)}
+                onClick={() => onDataConfirmation(true, editableData)}
                 style={{ backgroundColor: '#4caf50' }}
               >
                 ✅ Confirm Data
