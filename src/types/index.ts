@@ -1,4 +1,37 @@
-// JSON Invoice Data Structure
+// API Response Types
+export interface ApiVendor {
+  id: string;
+  name: string;
+  address?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  user?: { id: string };
+}
+
+export interface ApiInvoice {
+  id: string;
+  vendorId: string;
+  invoiceNumber: string;
+  date: string;
+  dueDate: string;
+  subtotal: number;
+  totalAmount: number;
+  paymentTerms: string;
+  earlyPayDiscount?: number;
+  lateFee?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PerformanceData {
+  month: string;
+  totalAmount: number;
+  vendorCount: number;
+}
+
+// Legacy JSON Invoice Data Structure (kept for backward compatibility)
 export interface InvoiceData {
   vendor_information: {
     company_name: { text: string };

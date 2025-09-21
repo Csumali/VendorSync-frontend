@@ -79,7 +79,7 @@ export default function VendorsPage() {
     })();
 
     return () => { cancelled = true; };
-  }, [isLoaded, isSignedIn, getToken, upstream]);
+  }, [isLoaded, isSignedIn, upstream]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

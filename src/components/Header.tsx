@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useAuth, useUser } from '@clerk/nextjs';
 import ScanContractModal from './ScanContractModal';
+import { getApiService } from '@/data/apiService';
 
 export type OptimizationMode = 'Balanced' | 'Max Savings' | 'Cash Heavy';
 
@@ -157,26 +158,10 @@ export default function Header({
       const token = await getToken();
       if (!token) throw new Error('Not authenticated');
 
+      const apiService = getApiService(getToken);
+
       // 1) upload the document to extract data
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const commonHeaders: HeadersInit = {
-        'ngrok-skip-browser-warning': 'true',
-        Authorization: `Bearer ${token}`,
-      };
-
-      const uploadRes = await fetch(`${apiBase}/vendor/invoice/upload`, {
-        method: 'POST',
-        body: formData,
-        headers: commonHeaders,
-      });
-      if (!uploadRes.ok) {
-        const t = await uploadRes.text().catch(() => '');
-        throw new Error(`Upload failed: ${uploadRes.status} ${t}`);
-      }
-      const extract: UploadExtract = await uploadRes.json();
-
+      const extract: UploadExtract = await apiService.uploadInvoice(file);
       console.log('Extracted invoice data:', extract);
 
       // 2) create (or upsert) the vendor
@@ -185,16 +170,10 @@ export default function Header({
       if (!vendorBody.name) throw new Error('No vendor name detected from invoice');
 
       // 2a) Pull current vendors
-      const listRes = await fetch(`${apiBase}/vendor`, { headers: commonHeaders });
-      if (!listRes.ok) {
-        const t = await listRes.text().catch(() => '');
-        throw new Error(`Fetch vendors failed: ${listRes.status} ${t}`);
-      }
-      const listJson = await listRes.json();
-      const rows: VendorRow[] = Array.isArray(listJson) ? listJson : listJson?.vendors ?? [];
+      const existingVendors = await apiService.getVendors();
 
       // 2b) Try to find a match (by normalized name or email)
-      const existing = rows.find((v) => isSameVendor(v, { name: vendorBody.name, email: vendorBody.email ?? '' }));
+      const existing = existingVendors.find((v) => isSameVendor(v, { name: vendorBody.name, email: vendorBody.email ?? '' }));
       // Ensure email is null if empty string
       if (vendorBody.email === '') {
         vendorBody.email = null;
@@ -204,31 +183,14 @@ export default function Header({
         vendorId = existing.id;
       } else {
         // 2c) Create vendor
-        const vendorRes = await fetch(`${apiBase}/vendor`, {
-          method: 'POST',
-          headers: { ...commonHeaders, 'Content-Type': 'application/json' },
-          body: JSON.stringify(vendorBody),
-        });
-        if (!vendorRes.ok) {
-          const t = await vendorRes.text().catch(() => '');
-          throw new Error(`Create vendor failed: ${vendorRes.status} ${t}`);
-        }
-        const vendorJson = await vendorRes.json();
-        vendorId = vendorJson.id;
-        if (!vendorId) throw new Error('Vendor created but id missing in response');
+        const newVendor = await apiService.createVendor(vendorBody);
+        vendorId = newVendor.id;
       }
+      
       // 3) create the invoice for that vendor
       const invoiceBody = buildInvoiceBody(extract);
       console.log('Creating invoice with data:', invoiceBody);
-      const invoiceRes = await fetch(`${apiBase}/vendor/${vendorId}/invoice`, {
-        method: 'POST',
-        headers: { ...commonHeaders, 'Content-Type': 'application/json' },
-        body: JSON.stringify(invoiceBody),
-      });
-      if (!invoiceRes.ok) {
-        const t = await invoiceRes.text().catch(() => '');
-        throw new Error(`Create invoice failed: ${invoiceRes.status} ${t}`);
-      }
+      await apiService.createInvoice(vendorId, invoiceBody);
 
       setIsScanModalOpen(false);
       alert('✅ Vendor and invoice created successfully.');
