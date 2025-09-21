@@ -129,6 +129,8 @@ function badgeClassForPriority(p: string) {
 
 /* ========================= Page ========================= */
 
+const INSIGHTS_PER_PAGE = 2;
+
 export default function VendorAnalyticsPage() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
 
@@ -147,6 +149,8 @@ export default function VendorAnalyticsPage() {
   // data
   const [perf, setPerf] = useState<PerfView | null>(null);
   const [insights, setInsights] = useState<Insight[]>([]);
+  const [insightsPage, setInsightsPage] = useState(1);
+
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -211,18 +215,21 @@ export default function VendorAnalyticsPage() {
         const perfJson: PerfRaw = await perfRes.json();
         const perfView = normalizePerf(perfJson);
 
-        // INSIGHTS: try vendor-scoped first; then fallback to /ai-insights?vendorId=...; lastly filter /ai-insights
+        // INSIGHTS:
+        // try /vendor/:id/performance/ai-insights -> /vendor/:id/ai-insights -> /ai-insights?vendorId= -> global /ai-insights
         let insightsItems: Insight[] = [];
+
         let insightsRes = await fetch(`${apiBase}/vendor/${selectedVendorId}/performance/ai-insights`, { headers, cache: 'no-store' });
+        if (!insightsRes.ok) {
+          insightsRes = await fetch(`${apiBase}/vendor/${selectedVendorId}/ai-insights`, { headers, cache: 'no-store' });
+        }
         if (!insightsRes.ok) {
           insightsRes = await fetch(`${apiBase}/ai-insights?vendorId=${encodeURIComponent(selectedVendorId)}`, { headers, cache: 'no-store' });
         }
         if (insightsRes.ok) {
           const raw = await insightsRes.json();
-          // could be plain list or wrapped; accept both
           insightsItems = Array.isArray(raw) ? raw : (raw?.aiInsights ?? []);
         } else {
-          // final fallback: pull all and filter by vendor if the server returns groups
           const allRes = await fetch(`${apiBase}/ai-insights`, { headers, cache: 'no-store' });
           if (allRes.ok) {
             const all = await allRes.json();
@@ -236,12 +243,14 @@ export default function VendorAnalyticsPage() {
         if (!cancelled) {
           setPerf(perfView);
           setInsights(insightsItems);
+          setInsightsPage(1); // reset page when vendor/insights change
         }
       } catch (e: any) {
         if (!cancelled) {
           setErr(e?.message ?? 'Failed to load vendor analytics.');
           setPerf(null);
           setInsights([]);
+          setInsightsPage(1);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -271,9 +280,15 @@ export default function VendorAnalyticsPage() {
     selectedVendor?.email ||
     (selectedVendorId ? `Vendor ${selectedVendorId.slice(0, 8)}…` : '—');
 
+  // pagination calcs
+  const totalPages = Math.max(1, Math.ceil(insights.length / INSIGHTS_PER_PAGE));
+  const clampedPage = Math.min(insightsPage, totalPages);
+  const startIdx = (clampedPage - 1) * INSIGHTS_PER_PAGE;
+  const currentInsights = insights.slice(startIdx, startIdx + INSIGHTS_PER_PAGE);
+
   return (
-    <div className="min-h-dvh overflow-x-hidden">
-      <div className="grid md:grid-cols-[16rem_1fr]">
+    <div className="min-h-[100svh] bg-[var(--app)] overflow-x-hidden">
+      <div className="grid md:grid-cols-[16rem_1fr] items-stretch">
         <Sidebar mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
         <div className="min-w-0 flex flex-col">
           <Header
@@ -292,19 +307,19 @@ export default function VendorAnalyticsPage() {
 
               <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
                 <select
-                    value={selectedVendorId}
-                    onChange={(e) => setSelectedVendorId(e.target.value)}
-                    className="w-full min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2
-             text-sm text-black focus:outline-none focus:ring-2 focus:ring-black
-             sm:min-w-64 [color-scheme:light]
-             [&>option]:bg-white [&>option]:text-black"
-                    >
-                    {vendors.map(v => (
-                        <option key={v.id} value={v.id}>
-                        {v.name || v.email || v.id}
-                        </option>
-                    ))}
-                    </select>
+                  value={selectedVendorId}
+                  onChange={(e) => setSelectedVendorId(e.target.value)}
+                  className="w-full min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2
+                             text-sm text-black focus:outline-none focus:ring-2 focus:ring-black
+                             sm:min-w-64 [color-scheme:light]
+                             [&>option]:bg-white [&>option]:text-black"
+                >
+                  {vendors.map(v => (
+                    <option key={v.id} value={v.id}>
+                      {v.name || v.email || v.id}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
@@ -322,133 +337,178 @@ export default function VendorAnalyticsPage() {
 
             {/* ======== PERFORMANCE ======== */}
             {!loading && !err && perf && (
-              <>
-                <section className="rounded-xl border border-[var(--border)] bg-[var(--panel)] p-4">
-                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="truncate text-base font-semibold">{displayName}</div>
-                      <div className="text-xs text-[var(--subtext)]">
-                        Analyzed {fmtYMD(perf.analysisDate)} · {perf.analysisPeriodDays} days
-                      </div>
-                    </div>
-                    <span className={`rounded-md px-2 py-1 text-xs ${badgeClassForTrend(perf.spendTrend)}`}>
-                      {perf.spendTrend}
-                    </span>
-                  </div>
-
-                  {/* KPI grid */}
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    <div className="rounded-lg border border-[var(--border)] bg-[var(--card-2)] p-3">
-                      <div className="text-xs text-[var(--subtext)]">Total Spend</div>
-                      <div className="mt-1 text-xl font-semibold">{formatMoney(perf.totalSpend)}</div>
-                    </div>
-                    <div className="rounded-lg border border-[var(--border)] bg-[var(--card-2)] p-3">
-                      <div className="text-xs text-[var(--subtext)]">Avg Invoice</div>
-                      <div className="mt-1 text-xl font-semibold">{formatMoney(perf.avgInvoiceAmount)}</div>
-                    </div>
-                    <div className="rounded-lg border border-[var(--border)] bg-[var(--card-2)] p-3">
-                      <div className="text-xs text-[var(--subtext)]">Invoices</div>
-                      <div className="mt-1 text-xl font-semibold">{perf.invoiceCount}</div>
-                    </div>
-                    <div className="rounded-lg border border-[var(--border)] bg-[var(--card-2)] p-3">
-                      <div className="text-xs text-[var(--subtext)]">Consistency</div>
-                      <div className="mt-1 text-xl font-semibold">{perf.paymentConsistency}%</div>
+              <section className="rounded-xl border border-[var(--border)] bg-[var(--panel)] p-4">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-base font-semibold">{displayName}</div>
+                    <div className="text-xs text-[var(--subtext)]">
+                      Analyzed {fmtYMD(perf.analysisDate)} · {perf.analysisPeriodDays} days
                     </div>
                   </div>
+                  <span className={`rounded-md px-2 py-1 text-xs ${badgeClassForTrend(perf.spendTrend)}`}>
+                    {perf.spendTrend}
+                  </span>
+                </div>
 
-                  {/* Seasonal breakdown */}
-                  <div className="mt-4">
-                    <div className="mb-2 text-sm font-semibold">Seasonal Breakdown</div>
-                    {perf.seasonal.length === 0 ? (
-                      <div className="rounded-lg border border-[var(--border)] bg-[var(--card-2)] p-4 text-sm text-[var(--subtext)]">
-                        No seasonal pattern data.
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {perf.seasonal.map(s => (
-                          <div key={s.month}>
-                            <div className="flex items-center justify-between text-sm">
-                              <div>{s.month} · {s.count} inv</div>
-                              <div className="text-[var(--subtext)]">{s.pct}%</div>
-                            </div>
-                            <div className="mt-1 h-2 w-full overflow-hidden rounded bg-black/20">
-                              <div className="h-full bg-[var(--accent)]" style={{ width: `${Math.min(100, s.pct)}%` }} />
-                            </div>
+                {/* KPI grid */}
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="rounded-lg border border-[var(--border)] bg-[var(--card-2)] p-3">
+                    <div className="text-xs text-[var(--subtext)]">Total Spend</div>
+                    <div className="mt-1 text-xl font-semibold">{formatMoney(perf.totalSpend)}</div>
+                  </div>
+                  <div className="rounded-lg border border-[var(--border)] bg-[var(--card-2)] p-3">
+                    <div className="text-xs text-[var(--subtext)]">Avg Invoice</div>
+                    <div className="mt-1 text-xl font-semibold">{formatMoney(perf.avgInvoiceAmount)}</div>
+                  </div>
+                  <div className="rounded-lg border border-[var(--border)] bg-[var(--card-2)] p-3">
+                    <div className="text-xs text-[var(--subtext)]">Invoices</div>
+                    <div className="mt-1 text-xl font-semibold">{perf.invoiceCount}</div>
+                  </div>
+                  <div className="rounded-lg border border-[var(--border)] bg-[var(--card-2)] p-3">
+                    <div className="text-xs text-[var(--subtext)]">Consistency</div>
+                    <div className="mt-1 text-xl font-semibold">{perf.paymentConsistency}%</div>
+                  </div>
+                </div>
+
+                {/* Seasonal breakdown */}
+                <div className="mt-4">
+                  <div className="mb-2 text-sm font-semibold">Seasonal Breakdown</div>
+                  {perf.seasonal.length === 0 ? (
+                    <div className="rounded-lg border border-[var(--border)] bg-[var(--card-2)] p-4 text-sm text-[var(--subtext)]">
+                      No seasonal pattern data.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {perf.seasonal.map(s => (
+                        <div key={s.month}>
+                          <div className="flex items-center justify-between text-sm">
+                            <div>{s.month} · {s.count} inv</div>
+                            <div className="text-[var(--subtext)]">{s.pct}%</div>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </section>
-              </>
+                          <div className="mt-1 h-2 w-full overflow-hidden rounded bg-black/20">
+                            <div className="h-full bg-[var(--accent)]" style={{ width: `${Math.min(100, s.pct)}%` }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </section>
             )}
 
-            {/* ======== AI INSIGHTS ======== */}
+            {/* ======== AI INSIGHTS (2 per page) ======== */}
             {!loading && !err && (
               <section className="rounded-xl border border-[var(--border)] bg-[var(--panel)] p-4">
-                <div className="mb-3 text-base font-semibold">AI Insights</div>
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="text-base font-semibold">AI Insights</div>
+                  {insights.length > 0 && (
+                    <div className="text-xs text-[var(--subtext)]">
+                      Showing {startIdx + 1}–{Math.min(startIdx + INSIGHTS_PER_PAGE, insights.length)} of {insights.length}
+                    </div>
+                  )}
+                </div>
+
                 {insights.length === 0 ? (
                   <div className="rounded-lg border border-[var(--border)] bg-[var(--card-2)] p-4 text-center text-[var(--subtext)]">
                     No insights for this vendor.
                   </div>
                 ) : (
-                  <div className="grid gap-3 md:grid-cols-2">
-                    {insights.map((it, idx) => (
-                      <article key={idx} className="rounded-lg border border-[var(--border)] bg-[var(--card-2)] p-3">
-                        <div className="mb-2 flex items-center justify-between gap-2">
-                          <div className="font-semibold">{it.title}</div>
-                          <div className="flex items-center gap-2">
-                            {it.insightType && (
-                              <span className="rounded-md bg-black/20 px-2 py-1 text-xs">{it.insightType}</span>
-                            )}
-                            {it.priority && (
-                              <span className={`rounded-md px-2 py-1 text-xs ${badgeClassForPriority(it.priority)}`}>
-                                {it.priority}
-                              </span>
-                            )}
+                  <>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {currentInsights.map((it, idx) => (
+                        <article key={`${clampedPage}-${idx}`} className="rounded-lg border border-[var(--border)] bg-[var(--card-2)] p-3">
+                          <div className="mb-2 flex items-center justify-between gap-2">
+                            <div className="font-semibold">{it.title}</div>
+                            <div className="flex items-center gap-2">
+                              {it.insightType && (
+                                <span className="rounded-md bg-black/20 px-2 py-1 text-xs">{it.insightType}</span>
+                              )}
+                              {it.priority && (
+                                <span className={`rounded-md px-2 py-1 text-xs ${badgeClassForPriority(it.priority)}`}>
+                                  {it.priority}
+                                </span>
+                              )}
+                            </div>
                           </div>
+                          {it.description && (
+                            <p className="mb-2 whitespace-pre-wrap text-sm text-[var(--subtext)]">{it.description}</p>
+                          )}
+                          {it.impact && (
+                            <p className="mb-2 text-sm"><span className="text-[var(--subtext)]">Impact:</span> {it.impact}</p>
+                          )}
+                          {it.financialImpact?.estimatedAmount != null && (
+                            <p className="mb-2 text-sm">
+                              <span className="text-[var(--subtext)]">Estimated:</span>{' '}
+                              {formatMoney(it.financialImpact.estimatedAmount)} {it.financialImpact.timeframe ? `(${it.financialImpact.timeframe})` : ''}
+                            </p>
+                          )}
+                          {it.confidence != null && (
+                            <div className="mb-2">
+                              <div className="flex items-center justify-between text-xs text-[var(--subtext)]">
+                                <span>Confidence</span>
+                                <span>{Math.round(it.confidence * 100)}%</span>
+                              </div>
+                              <div className="mt-1 h-2 w-full overflow-hidden rounded bg-black/20">
+                                <div className="h-full bg-[var(--accent)]" style={{ width: `${Math.min(100, Math.max(0, it.confidence * 100))}%` }} />
+                              </div>
+                            </div>
+                          )}
+                          {it.riskFactors?.level && (
+                            <p className="mb-2 text-sm">
+                              <span className="text-[var(--subtext)]">Risk:</span>{' '}
+                              <span className="rounded-md bg-black/20 px-2 py-0.5 text-xs">{it.riskFactors.level}</span>{' '}
+                              {it.riskFactors.description && <span className="text-[var(--subtext)]">– {it.riskFactors.description}</span>}
+                            </p>
+                          )}
+                          {it.actionItems?.length ? (
+                            <div className="mt-2">
+                              <div className="mb-1 text-xs text-[var(--subtext)]">Action Items</div>
+                              <ul className="list-disc pl-5 text-sm">
+                                {it.actionItems.map((a, i) => <li key={i}>{a}</li>)}
+                              </ul>
+                            </div>
+                          ) : null}
+                        </article>
+                      ))}
+                    </div>
+
+                    {/* Pagination controls */}
+                    {totalPages > 1 && (
+                      <div className="mt-4 flex flex-col items-center justify-between gap-3 sm:flex-row">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setInsightsPage(p => Math.max(1, p - 1))}
+                            disabled={clampedPage <= 1}
+                            className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm disabled:opacity-50 hover:bg-black/10"
+                          >
+                            ← Prev
+                          </button>
+                          <button
+                            onClick={() => setInsightsPage(p => Math.min(totalPages, p + 1))}
+                            disabled={clampedPage >= totalPages}
+                            className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm disabled:opacity-50 hover:bg-black/10"
+                          >
+                            Next →
+                          </button>
                         </div>
-                        {it.description && (
-                          <p className="mb-2 whitespace-pre-wrap text-sm text-[var(--subtext)]">{it.description}</p>
-                        )}
-                        {it.impact && (
-                          <p className="mb-2 text-sm"><span className="text-[var(--subtext)]">Impact:</span> {it.impact}</p>
-                        )}
-                        {it.financialImpact?.estimatedAmount != null && (
-                          <p className="mb-2 text-sm">
-                            <span className="text-[var(--subtext)]">Estimated:</span>{' '}
-                            {formatMoney(it.financialImpact.estimatedAmount)} {it.financialImpact.timeframe ? `(${it.financialImpact.timeframe})` : ''}
-                          </p>
-                        )}
-                        {it.confidence != null && (
-                          <div className="mb-2">
-                            <div className="flex items-center justify-between text-xs text-[var(--subtext)]">
-                              <span>Confidence</span>
-                              <span>{Math.round(it.confidence * 100)}%</span>
-                            </div>
-                            <div className="mt-1 h-2 w-full overflow-hidden rounded bg-black/20">
-                              <div className="h-full bg-[var(--accent)]" style={{ width: `${Math.min(100, Math.max(0, it.confidence * 100))}%` }} />
-                            </div>
-                          </div>
-                        )}
-                        {it.riskFactors?.level && (
-                          <p className="mb-2 text-sm">
-                            <span className="text-[var(--subtext)]">Risk:</span>{' '}
-                            <span className="rounded-md bg-black/20 px-2 py-0.5 text-xs">{it.riskFactors.level}</span>{' '}
-                            {it.riskFactors.description && <span className="text-[var(--subtext)]">– {it.riskFactors.description}</span>}
-                          </p>
-                        )}
-                        {it.actionItems?.length ? (
-                          <div className="mt-2">
-                            <div className="mb-1 text-xs text-[var(--subtext)]">Action Items</div>
-                            <ul className="list-disc pl-5 text-sm">
-                              {it.actionItems.map((a, i) => <li key={i}>{a}</li>)}
-                            </ul>
-                          </div>
-                        ) : null}
-                      </article>
-                    ))}
-                  </div>
+
+                        {/* Page dots */}
+                        <div className="flex flex-wrap items-center gap-2">
+                          {Array.from({ length: totalPages }).map((_, i) => {
+                            const active = i + 1 === clampedPage;
+                            return (
+                              <button
+                                key={i}
+                                onClick={() => setInsightsPage(i + 1)}
+                                aria-label={`Go to page ${i + 1}`}
+                                className={`h-2.5 w-2.5 rounded-full ${active ? 'bg-[var(--accent)]' : 'bg-black/30 hover:bg-black/50'}`}
+                              />
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </section>
             )}
