@@ -211,7 +211,7 @@ export default function DashboardPage() {
 
   // Show dashboard for authenticated users
   return (
-    <div className="min-h-dvh overflow-x-hidden">
+    <div className="min-h-dvh">
         <div className={styles.app}>
           {/* Sidebar (desktop rail + mobile drawer) */}
           <Sidebar mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />

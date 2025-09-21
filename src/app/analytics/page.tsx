@@ -287,7 +287,7 @@ export default function VendorAnalyticsPage() {
   const currentInsights = insights.slice(startIdx, startIdx + INSIGHTS_PER_PAGE);
 
   return (
-    <div className="min-h-[100svh] bg-[var(--app)] overflow-x-hidden">
+    <div className="min-h-[100svh] bg-[var(--app)]">
       <div className="grid md:grid-cols-[16rem_1fr] items-stretch">
         <Sidebar mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
         <div className="min-w-0 flex flex-col">
