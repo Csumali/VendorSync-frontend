@@ -34,7 +34,7 @@ export default function VendorsPage() {
   const [err, setErr] = useState<string | null>(null);
 
   const upstream =
-    process.env.NEXT_PUBLIC_VENDORS_API_URL;
+    process.env.NEXT_PUBLIC_API_BASE + '/vendor';
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
