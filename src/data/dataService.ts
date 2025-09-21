@@ -11,7 +11,6 @@ let globalTotalSpend = 0;
 
 // Storage key for persisting total spend across page refreshes
 const TOTAL_SPEND_STORAGE_KEY = 'vendorsync_total_spend';
-
 // Initialize the data service with API data
 export async function initializeDataService(getToken: () => Promise<string | null>): Promise<void> {
   if (isInitialized) return;
@@ -47,6 +46,7 @@ export async function initializeDataService(getToken: () => Promise<string | nul
     setGlobalTotalSpend(initialTotalSpend);
     
     isInitialized = true;
+    console.log(`API data service initialized with ${vendors.length} vendors and ${invoices.length} invoices`);
   } catch (error) {
     console.error('Failed to initialize API data service:', error);
     throw error;

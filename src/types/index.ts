@@ -21,6 +21,7 @@ export interface ApiInvoice {
   paymentTerms: string;
   earlyPayDiscount?: number;
   lateFee?: number;
+
   status?: 'paid' | 'pending' | string | null;
   paidDate?: string | null;
   paidAmount?: number | null;
@@ -31,6 +32,7 @@ export interface ApiInvoice {
     id: string;
     name: string;
   };
+
 }
 
 export interface PerformanceData {

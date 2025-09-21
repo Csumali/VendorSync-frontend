@@ -274,7 +274,7 @@ export default function DashboardPage() {
 
             <div className={styles.footer}>
               <div>© VendorSync • Data loaded from API.</div>
-              <div>Features: OCR contracts, payment optimization, price monitoring.</div>
+              <div>Features: OCR contracts, payment optimization, price monitoring, compliance tracking.</div>
             </div>
           </main>
         </div>

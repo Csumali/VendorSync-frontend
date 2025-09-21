@@ -9,12 +9,10 @@ export class ApiDataProcessor {
     this.vendors = vendors;
     this.invoices = invoices;
     this.performanceData = performanceData;
-    
   }
 
   // Calculate KPIs based on API data
   public getKPIs(): KPIs {
-    
     const now = new Date();
     const thirtyDaysFromNow = new Date(now.getTime() + (30 * 24 * 60 * 60 * 1000));
 
@@ -60,7 +58,6 @@ export class ApiDataProcessor {
     const validatedTotalSpend = Number.isFinite(totalSpend) && totalSpend >= 0 && totalSpend <= 1000000000 
       ? totalSpend 
       : 0; // Cap at $1B and default to 0 for invalid values
-
 
     return {
       totalVendors,
@@ -208,7 +205,6 @@ export class ApiDataProcessor {
   public getCalendarEvents(year?: number, month?: number): CalendarEvent[] {
     const events: CalendarEvent[] = [];
     
-    
     this.invoices.forEach(invoice => {
       const dueDate = new Date(invoice.dueDate);
       const invoiceYear = dueDate.getFullYear();
@@ -340,7 +336,6 @@ export class ApiDataProcessor {
     console.log('ApiDataProcessor: Final monthly totals:', { months, amounts });
     return { months, amounts };
   }
-
   // Helper methods
   private calculateComplianceStatus(vendorInvoices: ApiInvoice[]): string {
     const hasLateFees = vendorInvoices.some(invoice => invoice.lateFee && invoice.lateFee > 0);

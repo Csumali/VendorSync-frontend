@@ -1,9 +1,11 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useAuth, useUser } from '@clerk/nextjs';
 import ScanContractModal from './ScanContractModal';
+
 import DataConfirmationModal from './DataConfirmationModal';
+
 import { getApiService } from '@/data/apiService';
 
 export type OptimizationMode = 'Balanced' | 'Max Savings' | 'Cash Heavy';
