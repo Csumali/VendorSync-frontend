@@ -1,8 +1,8 @@
 'use client';
 
+
 import { useState, useEffect } from 'react';
-import { useUser } from '@clerk/nextjs';
-import { SignIn } from '@clerk/nextjs';
+import { useAuth, useUser, SignIn } from '@clerk/nextjs';
 import Sidebar from '@/components/Sidebar';
 import Header from '@/components/Header';
 import KPICards from '@/components/KPICards';
@@ -14,11 +14,14 @@ import RenewalsTable from '@/components/RenewalsTable';
 import { OptimizationMode, Vendor, Alert, Renewal, KPIs } from '@/types';
 import { getVendors, getAlerts, getRenewals, getKPIs, getSavingsSeries, initializeDataService } from '@/data/dataService';
 import styles from './dashboard.module.css';
+// import { io } from 'socket.io-client';
 
 export default function DashboardPage() {
+  const { userId, sessionId, getToken } = useAuth()
   const { isLoaded, isSignedIn } = useUser();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [optimizationMode, setOptimizationMode] = useState<OptimizationMode>('Balanced');
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   
   // State for dashboard data
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -66,6 +69,77 @@ export default function DashboardPage() {
       loadDashboardData();
     }
   }, [isLoaded, isSignedIn]);
+
+  // Touch gesture support for mobile sidebar
+  useEffect(() => {
+    let startX = 0;
+    let startY = 0;
+    let isSwipeStarted = false;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      isSwipeStarted = false;
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!isSwipeStarted) {
+        const deltaX = e.touches[0].clientX - startX;
+        const deltaY = e.touches[0].clientY - startY;
+        
+        // Check if it's a horizontal swipe from left edge
+        if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX > 50 && startX < 50) {
+          isSwipeStarted = true;
+          e.preventDefault();
+          setIsMobileSidebarOpen(true);
+        }
+      }
+    };
+
+    const handleTouchEnd = () => {
+      isSwipeStarted = false;
+    };
+
+    // Add touch event listeners
+    document.addEventListener('touchstart', handleTouchStart, { passive: false });
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd);
+
+    return () => {
+      document.removeEventListener('touchstart', handleTouchStart);
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, []);
+
+  // const token = await getToken();
+  // useEffect(() => {
+    
+  //   const socket = io("https://d0b310cdd31d.ngrok-free.app", {
+  //     transports: ['websocket'],
+  //     extraHeaders: {
+  //       "Authorization": `Bearer ${token}`
+  //     }
+  //   }); // your NestJS gateway URL
+
+  //   socket.on("connect", () => {
+  //     console.log("Connected:", socket.id);
+  //   });
+
+  //   socket.on("overdue_payments", (data) => {
+  //     console.log("Received overdue_payments:", data);
+  //     // setMessages((prev) => [...prev, data]);
+  //   });
+  //   socket.on("message", (data) => {
+  //     console.log(data)
+  //   });
+
+  //   socket.emit("message","Hello from client")
+
+  //   return () => {
+  //     socket.disconnect();
+  //   };
+  // }, []);
 
 
   // Show loading state while Clerk is initializing or data is loading

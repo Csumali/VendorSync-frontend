@@ -6,19 +6,18 @@ import ScanContractModal from './ScanContractModal';
 
 export type OptimizationMode = 'Balanced' | 'Max Savings' | 'Cash Heavy';
 
-export default function Header({
-  optimizationMode,
-  onModeChange,
-  onOpenSidebar,
-}: {
+interface HeaderProps {
   optimizationMode: OptimizationMode;
-  onModeChange: (m: OptimizationMode) => void;
+  onModeChange: (mode: OptimizationMode) => void;
   onOpenSidebar: () => void;
-}) {
+}
+
+export default function Header({ optimizationMode, onModeChange, onOpenSidebar }: HeaderProps) {
   const { user, isLoaded } = useUser();
   const { getToken } = useAuth();
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
-
+  const [uploadResponse, setUploadResponse] = useState<any>(null);
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const modes: OptimizationMode[] = ['Balanced', 'Max Savings', 'Cash Heavy'];
   const currentIndex = modes.indexOf(optimizationMode);
 
@@ -28,19 +27,47 @@ export default function Header({
   };
 
   const handleScanConfirm = async (file: File) => {
+    console.log('Contract file selected:', file.name);
     const token = await getToken();
-    const formData = new FormData();
-    formData.append('file', file);
-    const res = await fetch('https://868697843cec.ngrok-free.app/vendor/invoice/upload', {
-      method: 'POST',
-      body: formData,
-      headers: {
-        'ngrok-skip-browser-warning': 'true',
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
-    alert('Contract uploaded successfully');
+    
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await fetch(`https://abbff5cd7d1b.ngrok-free.app/vendor/invoice/upload`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'ngrok-skip-browser-warning': 'true',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to upload contract error: ' + response.statusText);
+      }
+      
+      const data = await response.json();
+      console.log('Contract uploaded successfully:', data);
+      
+      // Store the response data and show confirmation modal
+      setUploadResponse(data);
+      setIsConfirmModalOpen(true);
+      
+    } catch (error) {
+      console.error('Error uploading contract:', error);
+      alert('Failed to upload contract. Please try again.');
+    }
+  };
+
+  const handleDataConfirmation = (isCorrect: boolean) => {
+    setIsConfirmModalOpen(false);
+    if (isCorrect) {
+      alert('✅ Contract data confirmed and saved!');
+      // Here you would typically save the data to your state/backend
+    } else {
+      alert('❌ Contract data rejected. Please try uploading again.');
+    }
+    setUploadResponse(null);
   };
 
   const displayName = !isLoaded
@@ -95,11 +122,13 @@ export default function Header({
           </div>
         </div>
       </div>
-
       <ScanContractModal
         isOpen={isScanModalOpen}
         onClose={() => setIsScanModalOpen(false)}
         onConfirm={handleScanConfirm}
+        uploadResponse={uploadResponse}
+        isConfirmModalOpen={isConfirmModalOpen}
+        onDataConfirmation={handleDataConfirmation}
       />
     </header>
   );

@@ -7,9 +7,19 @@ interface ScanContractModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: (file: File) => void;
+  uploadResponse?: any;
+  isConfirmModalOpen: boolean;
+  onDataConfirmation: (isCorrect: boolean) => void;
 }
 
-export default function ScanContractModal({ isOpen, onClose, onConfirm }: ScanContractModalProps) {
+export default function ScanContractModal({ 
+  isOpen, 
+  onClose, 
+  onConfirm, 
+  uploadResponse, 
+  isConfirmModalOpen, 
+  onDataConfirmation 
+}: ScanContractModalProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
@@ -79,6 +89,80 @@ export default function ScanContractModal({ isOpen, onClose, onConfirm }: ScanCo
       fileInputRef.current.value = '';
     }
   };
+
+  // Show confirmation modal if response data is available
+  if (isConfirmModalOpen && uploadResponse) {
+    return (
+      <div className={styles.overlay} onClick={() => onDataConfirmation(false)}>
+        <div className={styles.modal} onClick={(e) => e.stopPropagation()} style={{ maxWidth: '800px' }}>
+          <div className={styles.header}>
+            <h2 style={{ fontSize: '24px', fontWeight: '600' }}>📋 Confirm Contract Data</h2>
+            <button className={styles.closeBtn} onClick={() => onDataConfirmation(false)}>
+              ✕
+            </button>
+          </div>
+
+          <div className={styles.content}>
+            <div style={{ marginBottom: '20px' }}>
+              <h3 style={{ marginBottom: '15px', color: '#2e7d32', fontSize: '20px', fontWeight: '600' }}>✅ Contract Successfully Processed!</h3>
+              <p style={{ fontSize: '16px', color: '#333', margin: 0 }}>Please review the extracted contract data below:</p>
+            </div>
+
+            <div style={{ 
+              backgroundColor: '#f5f5f5', 
+              padding: '20px', 
+              borderRadius: '8px',
+              marginBottom: '20px',
+              maxHeight: '400px',
+              overflow: 'auto'
+            }}>
+              <h4 style={{ margin: '0 0 15px 0', color: '#1976d2', fontSize: '16px', fontWeight: '600' }}>📊 Extracted Data:</h4>
+              <pre style={{ 
+                fontSize: '14px',
+                margin: 0,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                fontFamily: 'Monaco, Consolas, "Courier New", monospace',
+                lineHeight: '1.5'
+              }}>
+                {JSON.stringify(uploadResponse, null, 2)}
+              </pre>
+            </div>
+
+            <div style={{ 
+              padding: '20px', 
+              backgroundColor: '#e3f2fd', 
+              borderRadius: '8px',
+              marginBottom: '20px'
+            }}>
+              <h4 style={{ margin: '0 0 15px 0', fontSize: '18px', fontWeight: '600', color: '#1976d2' }}>🤔 Is this data correct?</h4>
+              <p style={{ margin: '0 0 15px 0', fontSize: '16px', lineHeight: '1.6', color: '#333' }}>
+                Please carefully review the extracted information above. If the data looks accurate, 
+                click "✅ Confirm" to save it. If not, click "❌ Reject" to try again.
+              </p>
+            </div>
+
+            <div className={styles.actions}>
+              <button 
+                className={styles.cancelBtn} 
+                onClick={() => onDataConfirmation(false)}
+                style={{ backgroundColor: '#f44336' }}
+              >
+                ❌ Reject Data
+              </button>
+              <button 
+                className={styles.confirmBtn} 
+                onClick={() => onDataConfirmation(true)}
+                style={{ backgroundColor: '#4caf50' }}
+              >
+                ✅ Confirm Data
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!isOpen) return null;
 

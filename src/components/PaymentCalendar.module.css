@@ -43,10 +43,89 @@
   background: var(--chip);
 }
 
+.calendarContainer {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.calendarContainer::-webkit-scrollbar {
+  height: 8px;
+}
+
+.calendarContainer::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.calendarContainer::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+.calendarContainer::-webkit-scrollbar-thumb:hover {
+  background: var(--subtext);
+}
+
 .calGrid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 6px;
+  min-width: 600px; /* Ensure minimum width for proper calendar display */
+}
+
+.scrollHint {
+  background: var(--accent);
+  color: #051320;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  text-align: center;
+  margin-bottom: 8px;
+  animation: fadeInOut 3s ease-in-out;
+  font-weight: 600;
+}
+
+@keyframes fadeInOut {
+  0% { opacity: 0; transform: translateY(-10px); }
+  20% { opacity: 1; transform: translateY(0); }
+  80% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-10px); }
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .calendar {
+    gap: 6px;
+  }
+  
+  .calHead h3 {
+    font-size: 13px;
+  }
+  
+  .btn {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+  
+  .calGrid {
+    gap: 4px;
+  }
+}
+
+@media (max-width: 480px) {
+  .calHead h3 {
+    font-size: 12px;
+  }
+  
+  .btn {
+    padding: 3px 6px;
+    font-size: 11px;
+  }
+  
+  .calGrid {
+    gap: 2px;
+  }
 }
 
 .calCell {

@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useUser, SignOutButton } from '@clerk/nextjs';
 import { useEffect, useMemo } from 'react';
 
+
 type NavItem = { icon: string; label: string; href?: string };
 
 const NAV: NavItem[] = [
@@ -93,6 +94,7 @@ export default function Sidebar({
             </span>
           )
         )}
+
       </nav>
 
       {/* User */}

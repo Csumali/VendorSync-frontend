@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Vendor, OptimizationMode } from '@/types';
 import styles from './Charts.module.css';
 
@@ -13,6 +13,7 @@ interface ChartsProps {
 export default function Charts({ vendors, savingsSeries, optimizationMode }: ChartsProps) {
   const lineChartRef = useRef<HTMLCanvasElement>(null);
   const barChartRef = useRef<HTMLCanvasElement>(null);
+  const [showScrollHint, setShowScrollHint] = useState(false);
 
   const drawLineChart = (canvas: HTMLCanvasElement, series: number[]) => {
     const ctx = canvas.getContext('2d');
@@ -148,11 +149,31 @@ export default function Charts({ vendors, savingsSeries, optimizationMode }: Cha
     return () => window.removeEventListener('resize', handleResize);
   }, [vendors, savingsSeries, optimizationMode]);
 
+  // Check if scrolling is needed on mobile
+  useEffect(() => {
+    const checkScrollNeed = () => {
+      if (window.innerWidth <= 768) {
+        setShowScrollHint(true);
+        // Hide hint after 3 seconds
+        setTimeout(() => setShowScrollHint(false), 3000);
+      }
+    };
+    
+    checkScrollNeed();
+  }, [vendors, savingsSeries]); // Re-check when data changes
+
   return (
     <div className={styles.charts}>
+      {showScrollHint && (
+        <div className={styles.scrollHint}>
+          ← Swipe charts to see full data →
+        </div>
+      )}
       <div className={styles.card}>
         <h3>Cash Flow & Savings Projection</h3>
-        <canvas ref={lineChartRef} height={160}></canvas>
+        <div className={styles.chartContainer}>
+          <canvas ref={lineChartRef} height={160}></canvas>
+        </div>
         <div className={styles.footer}>
           <span>Optimization Mode: <strong>{optimizationMode}</strong></span>
           <span className={styles.deltaUp}>Potential +$3.2k/yr</span>
@@ -160,7 +181,9 @@ export default function Charts({ vendors, savingsSeries, optimizationMode }: Cha
       </div>
       <div className={styles.card}>
         <h3>Price Change Watchlist (30d)</h3>
-        <canvas ref={barChartRef} height={140}></canvas>
+        <div className={styles.chartContainer}>
+          <canvas ref={barChartRef} height={140}></canvas>
+        </div>
         <div className={styles.footer}>
           <span>🧾 Top 5 vendors by spend</span>
           <span className={styles.deltaDown}>Review ↑ increases</span>

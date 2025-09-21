@@ -85,6 +85,7 @@ export default function PaymentCalendar({ events: propEvents }: PaymentCalendarP
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>(propEvents || []);
   const [loadingEvents, setLoadingEvents] = useState(false);
+  const [showScrollHint, setShowScrollHint] = useState(false);
   
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -137,6 +138,19 @@ export default function PaymentCalendar({ events: propEvents }: PaymentCalendarP
     return isCurrentMonth && day === todayDate;
   };
 
+  // Check if scrolling is needed on mobile
+  useEffect(() => {
+    const checkScrollNeed = () => {
+      if (window.innerWidth <= 768) {
+        setShowScrollHint(true);
+        // Hide hint after 3 seconds
+        setTimeout(() => setShowScrollHint(false), 3000);
+      }
+    };
+    
+    checkScrollNeed();
+  }, [currentDate]); // Re-check when month changes
+
   return (
     <div className={styles.calendar}>
       <div className={styles.calHead}>
@@ -153,7 +167,13 @@ export default function PaymentCalendar({ events: propEvents }: PaymentCalendarP
           <button className={styles.btn} onClick={goToNextMonth}>▶</button>
         </div>
       </div>
-      <div className={styles.calGrid}>
+      {showScrollHint && (
+        <div className={styles.scrollHint}>
+          ← Swipe to see full calendar →
+        </div>
+      )}
+      <div className={styles.calendarContainer}>
+        <div className={styles.calGrid}>
         {Array.from({ length: totalCells }, (_, i) => {
           const dayNum = i - startWeekday + 1;
           const event = getEventForDay(dayNum);
@@ -179,6 +199,7 @@ export default function PaymentCalendar({ events: propEvents }: PaymentCalendarP
             </div>
           );
         })}
+        </div>
       </div>
       
       <DatePicker
