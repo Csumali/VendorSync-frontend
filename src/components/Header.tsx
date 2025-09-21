@@ -1,25 +1,150 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useAuth, useUser } from '@clerk/nextjs';
 import ScanContractModal from './ScanContractModal';
 
 export type OptimizationMode = 'Balanced' | 'Max Savings' | 'Cash Heavy';
 
-interface HeaderProps {
-  optimizationMode: OptimizationMode;
-  onModeChange: (mode: OptimizationMode) => void;
-  onOpenSidebar: () => void;
+type UploadExtract = {
+  bill_to?: {
+    company_name?: { text?: string };
+    address?: { text?: string };
+    contact?: {
+      phone?: { text?: string | null };
+      email?: { text?: string | null };
+    };
+  };
+  invoice_details?: {
+    invoice_number?: { text?: string | null };
+    invoice_date?: { text?: string | null };
+    due_date?: { text?: string | null };
+    financial_data?: {
+      total_amount?: { text?: string | null; numeric_value?: number | null };
+      subtotal?: { text?: string | null; numeric_value?: number | null };
+      tax?: { text?: string | null; numeric_value?: number | null };
+      line_items?: Array<{
+        description?: { text?: string | null };
+        quantity?: number | null;
+        amount?: { text?: string | null; numeric_value?: number | null };
+      }>;
+      payment_terms?: {
+        terms_text?: string | null;
+        standardized?: string | null;
+        early_pay_discount?: {
+          found?: boolean;
+          text?: string;
+          percentage?: number | null;
+          days?: number | null;
+        };
+        late_fee?: {
+          found?: boolean;
+          percentage?: number | null;
+          period?: string | null;
+        };
+      };
+    };
+  };
+};
+
+type VendorRow = {
+  id: string;
+  name: string;
+  email?: string | null;
+  address?: string | null;
+  phone?: string | null;
+};
+
+// Build the vendor POST body from the upload extract
+function buildVendorBody(extract: UploadExtract) {
+  return {
+    name: (extract.bill_to?.company_name?.text ?? '').trim(),
+    address: extract.bill_to?.address?.text ?? null,
+    contact: extract.bill_to?.contact?.phone?.text ?? null,
+    email: extract.bill_to?.contact?.email?.text ?? null,
+  };
 }
 
-export default function Header({ optimizationMode, onModeChange, onOpenSidebar }: HeaderProps) {
+// Build the invoice POST body from the upload extract
+function parseMoney(input?: { text?: string | null; numeric_value?: number | null }) {
+  if (!input) return undefined;
+  if (typeof input.numeric_value === 'number') return input.numeric_value;
+  if (input.text) {
+    const num = Number(String(input.text).replace(/[^\d.-]/g, ''));
+    return Number.isFinite(num) ? num : undefined;
+  }
+  return undefined;
+}
+
+function ymd(s?: string | null) {
+  if (!s) return '';
+  // already ISO? keep it; otherwise best-effort normalize
+  const d = new Date(s);
+  if (!Number.isFinite(d.getTime())) return String(s);
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+function buildInvoiceBody(extract: UploadExtract) {
+  const fin = extract.invoice_details?.financial_data;
+
+  const invoiceNumber = extract.invoice_details?.invoice_number?.text ?? '';
+  const date = ymd(extract.invoice_details?.invoice_date?.text ?? null);
+  const dueDate = ymd(extract.invoice_details?.due_date?.text ?? null);
+
+  const subtotal = parseMoney(fin?.subtotal) ?? 0;
+  const totalAmount = parseMoney(fin?.total_amount) ?? subtotal;
+
+  const paymentTerms = fin?.payment_terms?.early_pay_discount?.text?.trim();
+
+  const earlyPayDiscount =
+    fin?.payment_terms?.early_pay_discount?.percentage ?? 0;
+
+  return {
+    invoiceNumber,
+    date,
+    dueDate,
+    subtotal,
+    totalAmount,
+    paymentTerms,
+    earlyPayDiscount,
+  };
+}
+
+const norm = (s: string | null | undefined) =>
+  (s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+function isSameVendor(a: VendorRow, target: { name: string; email: string }) {
+  const aName = norm(a.name);
+  const tName = norm(target.name);
+  if (aName && tName && aName === tName) return true;
+
+  const aEmail = norm(a.email ?? '');
+  const tEmail = norm(target.email ?? '');
+  if (aEmail && tEmail && aEmail === tEmail) return true;
+
+  return false;
+}
+
+
+export default function Header({
+  optimizationMode,
+  onModeChange,
+  onOpenSidebar,
+}: {
+  optimizationMode: OptimizationMode;
+  onModeChange: (m: OptimizationMode) => void;
+  onOpenSidebar: () => void;
+}) {
   const { user, isLoaded } = useUser();
   const { getToken } = useAuth();
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
-  const [uploadResponse, setUploadResponse] = useState<any>(null);
-  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+
   const modes: OptimizationMode[] = ['Balanced', 'Max Savings', 'Cash Heavy'];
   const currentIndex = modes.indexOf(optimizationMode);
+  const apiBase = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:4000';
 
   const handleModeClick = () => {
     const nextIndex = (currentIndex + 1) % modes.length;
@@ -27,49 +152,92 @@ export default function Header({ optimizationMode, onModeChange, onOpenSidebar }
   };
 
   const handleScanConfirm = async (file: File) => {
-    console.log('Contract file selected:', file.name);
-    const token = await getToken();
-    
+    setBusy(true);
     try {
+      const token = await getToken();
+      if (!token) throw new Error('Not authenticated');
+
+      // 1) upload the document to extract data
       const formData = new FormData();
       formData.append('file', file);
-      const response = await fetch(process.env.NEXT_PUBLIC_CONTRACT_API_URL || `https://bf3639e4fedf.ngrok-free.app/vendor/invoice/upload`, {
+
+      const commonHeaders: HeadersInit = {
+        'ngrok-skip-browser-warning': 'true',
+        Authorization: `Bearer ${token}`,
+      };
+
+      const uploadRes = await fetch(`${apiBase}/vendor/invoice/upload`, {
         method: 'POST',
         body: formData,
-        headers: {
-          'ngrok-skip-browser-warning': 'true',
-          'Authorization': `Bearer ${token}`
-        }
+        headers: commonHeaders,
       });
-      
-      if (!response.ok) {
-        throw new Error('Failed to upload contract error: ' + response.statusText);
+      if (!uploadRes.ok) {
+        const t = await uploadRes.text().catch(() => '');
+        throw new Error(`Upload failed: ${uploadRes.status} ${t}`);
       }
-      
-      const data = await response.json();
-      console.log('Contract uploaded successfully:', data);
-      
-      // Store the response data and show confirmation modal
-      setUploadResponse(data);
-      setIsConfirmModalOpen(true);
-      
-    } catch (error) {
-      console.error('Error uploading contract:', error);
-      alert('Failed to upload contract. Please try again.');
-    }
-  };
+      const extract: UploadExtract = await uploadRes.json();
 
-  const handleDataConfirmation = (isCorrect: boolean, editedData?: any) => {
-    setIsConfirmModalOpen(false);
-    if (isCorrect) {
-      console.log('✅ Contract data confirmed and saved!', editedData);
-      alert('✅ Contract data confirmed and saved!');
-      // Here you would typically save the edited data to your state/backend
-      // You can now use editedData instead of uploadResponse for the final data
-    } else {
-      alert('❌ Contract data rejected. Please try uploading again.');
+      console.log('Extracted invoice data:', extract);
+
+      // 2) create (or upsert) the vendor
+      const vendorBody = buildVendorBody(extract);
+      console.log('Creating vendor with data:', vendorBody);
+      if (!vendorBody.name) throw new Error('No vendor name detected from invoice');
+
+      // 2a) Pull current vendors
+      const listRes = await fetch(`${apiBase}/vendor`, { headers: commonHeaders });
+      if (!listRes.ok) {
+        const t = await listRes.text().catch(() => '');
+        throw new Error(`Fetch vendors failed: ${listRes.status} ${t}`);
+      }
+      const listJson = await listRes.json();
+      const rows: VendorRow[] = Array.isArray(listJson) ? listJson : listJson?.vendors ?? [];
+
+      // 2b) Try to find a match (by normalized name or email)
+      const existing = rows.find((v) => isSameVendor(v, { name: vendorBody.name, email: vendorBody.email ?? '' }));
+      // Ensure email is null if empty string
+      if (vendorBody.email === '') {
+        vendorBody.email = null;
+      }
+      let vendorId: string;
+      if (existing) {
+        vendorId = existing.id;
+      } else {
+        // 2c) Create vendor
+        const vendorRes = await fetch(`${apiBase}/vendor`, {
+          method: 'POST',
+          headers: { ...commonHeaders, 'Content-Type': 'application/json' },
+          body: JSON.stringify(vendorBody),
+        });
+        if (!vendorRes.ok) {
+          const t = await vendorRes.text().catch(() => '');
+          throw new Error(`Create vendor failed: ${vendorRes.status} ${t}`);
+        }
+        const vendorJson = await vendorRes.json();
+        vendorId = vendorJson.id;
+        if (!vendorId) throw new Error('Vendor created but id missing in response');
+      }
+      // 3) create the invoice for that vendor
+      const invoiceBody = buildInvoiceBody(extract);
+      console.log('Creating invoice with data:', invoiceBody);
+      const invoiceRes = await fetch(`${apiBase}/vendor/${vendorId}/invoice`, {
+        method: 'POST',
+        headers: { ...commonHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify(invoiceBody),
+      });
+      if (!invoiceRes.ok) {
+        const t = await invoiceRes.text().catch(() => '');
+        throw new Error(`Create invoice failed: ${invoiceRes.status} ${t}`);
+      }
+
+      setIsScanModalOpen(false);
+      alert('✅ Vendor and invoice created successfully.');
+    } catch (err: any) {
+      console.error(err);
+      alert(err?.message || 'Failed to process invoice.');
+    } finally {
+      setBusy(false);
     }
-    setUploadResponse(null);
   };
 
   const displayName = !isLoaded
@@ -105,7 +273,10 @@ export default function Header({ optimizationMode, onModeChange, onOpenSidebar }
         {/* Row 2: action buttons */}
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <button
-            onClick={handleModeClick}
+            onClick={() => {
+              const nextIndex = (currentIndex + 1) % modes.length;
+              onModeChange(modes[nextIndex]);
+            }}
             className="inline-flex items-center gap-1 rounded-xl border border-[var(--border)] bg-[var(--chip)] px-3 py-2 text-sm transition hover:brightness-110"
           >
             ⚙️ <span className="hidden sm:inline">Optimization:</span>
@@ -113,8 +284,9 @@ export default function Header({ optimizationMode, onModeChange, onOpenSidebar }
           </button>
 
           <button
+            disabled={busy}
             onClick={() => setIsScanModalOpen(true)}
-            className="inline-flex items-center gap-1 rounded-xl border border-[#184ba8] bg-[linear-gradient(180deg,#1f6fff,#125bdb)] px-3 py-2 text-sm transition hover:brightness-110"
+            className="inline-flex items-center gap-1 rounded-xl border border-[#184ba8] bg-[linear-gradient(180deg,#1f6fff,#125bdb)] px-3 py-2 text-sm transition hover:brightness-110 disabled:opacity-60"
           >
             📷 <span className="hidden sm:inline">Scan Contract</span>
           </button>
@@ -124,13 +296,13 @@ export default function Header({ optimizationMode, onModeChange, onOpenSidebar }
           </div>
         </div>
       </div>
+
       <ScanContractModal
         isOpen={isScanModalOpen}
+        isConfirmModalOpen={false}
         onClose={() => setIsScanModalOpen(false)}
         onConfirm={handleScanConfirm}
-        uploadResponse={uploadResponse}
-        isConfirmModalOpen={isConfirmModalOpen}
-        onDataConfirmation={handleDataConfirmation}
+        onDataConfirmation={() => {}}
       />
     </header>
   );

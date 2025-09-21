@@ -12,7 +12,7 @@ const NAV: NavItem[] = [
   { icon: '📊', label: 'Dashboard', href: '/dashboard' },
   { icon: '🤝', label: 'Vendors', href: '/vendors' },
   { icon: '📄', label: 'Contracts' },
-  { icon: '💸', label: 'Payments' },
+  { icon: '💸', label: 'Payments', href: '/payments' },
   { icon: '🔔', label: 'Alerts' },
   { icon: '🛡️', label: 'Compliance' },
   { icon: '📈', label: 'Analytics' },
